@@ -221,14 +221,14 @@ thinking_default = ""
 thinking_elsewhere = ""        # action when the focused window isn't an agent window
 
 [sounds]
-# Sound effects. They play on the controller's speaker while it's wired (USB); over Bluetooth
-# Linux has no audio path to it, so "auto" uses the default output instead.
+# Sound effects, on the controller's speaker: wired through its sound card, over Bluetooth sent to it directly
+# (needs libopus; built-in sounds and 16-bit WAV files). Elsewhere "auto" uses the default output.
 enabled = false                # starting state; sounds:toggle flips it and remembers the choice
 submit = "builtin:blaster"     # ✕ sends Enter to an agent window, or an R2 shot ("" = silent)
 thinking = "builtin:charge"    # agent:thinking
 summon = "builtin:beacon"      # an agent starts waiting for you (together with the rumble)
 volume = 0.8
-device = "auto"                # auto | controller (wired speaker only) | system
+device = "auto"                # auto | controller (its speaker only, else silent) | system
 
 [modifiers]
 square = "window"

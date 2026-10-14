@@ -7,11 +7,15 @@ import socket
 import tempfile
 import unittest
 import zlib
+from array import array
 
-from ps_oneshot.linux import evdev
+from ps_oneshot.linux import evdev, opus
 from ps_oneshot.linux.dualsense import (
+    BT_AUDIO_FRAME_BYTES,
+    BT_AUDIO_FRAME_SAMPLES,
     Controller,
     MicButtonReader,
+    build_audio_report,
     build_output_report,
     hid_resources,
     mic_pressed,
@@ -326,6 +330,40 @@ class OutputReportTest(unittest.TestCase):
         ctrl = Controller(hid_id="event5", name="pad", gamepad=None)  # type: ignore[arg-type]
         with self.assertLogs("ps_oneshot.linux.dualsense", "WARNING"):
             self.assertFalse(ctrl.set_trigger_effect(right=trigger_off()))
+
+    def test_speaker_routing_touches_audio_fields_only(self) -> None:
+        report = build_output_report(True, 0, None, None, speaker=0x64)
+        common = report[3:-4]
+        self.assertEqual(common[:2], bytes([0xA0, 0x80]))  # speaker volume + audio control; audio control 2
+        self.assertEqual((common[5], common[7], common[37]), (0x64, 0x30, 0x02))  # volume, speaker path, preamp
+        others = [i for i in range(len(common)) if i not in (0, 1, 5, 7, 37)]
+        self.assertEqual(bytes(common[i] for i in others), bytes(len(others)))  # triggers, rumble, LEDs, mute: 0
+
+
+class BluetoothAudioReportTest(unittest.TestCase):
+    def test_layout_crc_and_a_state_that_changes_nothing(self) -> None:
+        frame = bytes(range(200))
+        report = build_audio_report(0x13, 0x107, frame)
+        self.assertEqual(len(report), 398)
+        self.assertEqual(report[:2], bytes([0x36, 0x30]))  # seq masked to 4 bits
+        # Sections: (kind | 0x80, length, payload) at fixed places.
+        self.assertEqual(report[2:11], bytes([0x91, 7, 0xFE, 64, 64, 64, 64, 64, 0x07]))  # speaker only, no mic
+        self.assertEqual(report[11:13], bytes([0x90, 63]))
+        self.assertEqual(report[13:76], bytes(63))  # no valid flags: triggers, rumble, lights, mic mute untouched
+        self.assertEqual(report[76:78], bytes([0x92, 64]))
+        self.assertEqual(report[142:144], bytes([0x93, 200]))
+        self.assertEqual(report[144:344], frame)
+        self.assertEqual(int.from_bytes(report[-4:], "little"), zlib.crc32(bytes([0xA2]) + report[:-4]))
+
+    def test_rejects_a_frame_of_the_wrong_size(self) -> None:
+        with self.assertRaises(ValueError):
+            build_audio_report(0, 0, bytes(199))
+
+    @unittest.skipUnless(opus.available(), "libopus not installed")
+    def test_opus_frames_have_the_fixed_size_the_controller_takes(self) -> None:
+        pcm = array("h", [1000, -1000] * (BT_AUDIO_FRAME_SAMPLES * 2 + 10))  # 2 frames and a bit, stereo
+        frames = opus.encode_cbr(pcm, 2, BT_AUDIO_FRAME_SAMPLES, BT_AUDIO_FRAME_BYTES)
+        self.assertEqual([len(f) for f in frames], [BT_AUDIO_FRAME_BYTES] * 3)
 
 
 class ScrollAccumulationTest(unittest.TestCase):

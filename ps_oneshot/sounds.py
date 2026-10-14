@@ -1,9 +1,10 @@
 """Sound effects, synthesized here (or any audio file): a blaster "pew" when you send a prompt,
 a power-up chirp for thinking levels, a beacon when an agent needs you.
 
-Plays on the DualSense's own speaker when the controller is wired (the kernel routes the right
-channel to the speaker over USB); Linux has no audio path to the controller over Bluetooth, so
-`device = "auto"` falls back to the default output then.
+They play on the DualSense's own speaker. Wired, the kernel makes it a sound card (the right channel goes to
+the speaker) and pw-play targets it. Over Bluetooth Linux has no audio device for it, so `BluetoothSpeaker`
+sends the sound to the controller itself, Opus-encoded in HID output reports. Otherwise, or with
+`device = "system"`, they play on the default output.
 """
 
 from __future__ import annotations
@@ -15,9 +16,12 @@ import math
 import os
 import shutil
 import subprocess
+import threading
+import time
 import wave
 
 from .actions import spawn
+from .linux import dualsense, opus
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +130,106 @@ def controller_sink() -> str | None:
         if str(properties.get("device.vendor.id", "")).lower() == SONY_VENDOR or "DualSense" in str(sink.get("name")):
             return str(sink.get("name"))
     return None
+
+
+SPEAKER_VOLUME = 0x64  # the controller speaker's own level; [sounds] volume scales the samples
+LEAD_IN_FRAMES = 3  # a little silence first, so the speaker amp is awake when the sound starts
+
+
+def bluetooth_samples(spec: str) -> array.array | None:
+    """Mono 16-bit samples at the rate the controller plays over Bluetooth: a built-in sound, or a 16-bit WAV
+    file (mixed down, resampled). None for anything else."""
+    if spec.startswith("builtin:"):
+        make = BUILTINS.get(spec.removeprefix("builtin:"))
+        return make(rate=dualsense.BT_AUDIO_RATE) if make else None
+    try:
+        with wave.open(os.path.expanduser(spec), "rb") as source:
+            if source.getsampwidth() != 2:
+                return None
+            channels, rate = source.getnchannels(), source.getframerate()
+            data = array.array("h", source.readframes(source.getnframes()))
+    except (OSError, EOFError, wave.Error):
+        return None
+    mono = array.array("h", (sum(data[i:i + channels]) // channels for i in range(0, len(data), channels)))
+    return resample(mono, rate, dualsense.BT_AUDIO_RATE)
+
+
+def resample(samples: array.array, source_rate: int, target_rate: int) -> array.array:
+    """Linear interpolation; plenty for short effects."""
+    if source_rate == target_rate or not samples:
+        return samples
+    step = source_rate / target_rate
+    out = array.array("h")
+    last = len(samples) - 1
+    for index in range(int(len(samples) / step)):
+        position = index * step
+        left = int(position)
+        right = min(left + 1, last)
+        out.append(int(samples[left] + (samples[right] - samples[left]) * (position - left)))
+    return out
+
+
+class BluetoothSpeaker:
+    """Sound effects on a DualSense's built-in speaker over Bluetooth: Opus frames in HID output reports
+    (0x36), paced to the controller's audio clock. The reports set only the speaker's own fields, so adaptive
+    triggers, rumble and lights carry on untouched. Encoded sounds are kept, so each is encoded once."""
+
+    def __init__(self) -> None:
+        self._encoded: dict[tuple[str, float], list[bytes] | None] = {}
+        self._stop = threading.Event()
+
+    def play(self, hidraw: str, spec: str, volume: float) -> bool:
+        """Start the sound; False when it can't go this way (no libopus, not a built-in or WAV sound)."""
+        key = (spec, round(volume, 3))
+        if key not in self._encoded:
+            self._encoded[key] = self._encode(spec, volume)
+        frames = self._encoded[key]
+        if frames is None:
+            return False
+        self._stop.set()  # a newer sound cuts off the one still playing
+        self._stop = threading.Event()
+        threading.Thread(target=self._stream, args=(hidraw, frames, self._stop), daemon=True).start()
+        return True
+
+    @staticmethod
+    def _encode(spec: str, volume: float) -> list[bytes] | None:
+        samples = bluetooth_samples(spec)
+        if samples is None or not opus.available():
+            log.info("%s can't play on the controller over Bluetooth (needs libopus and a built-in or WAV sound)", spec)
+            return None
+        gain = max(0.0, min(volume, 1.0))
+        stereo = array.array("h", [0] * (LEAD_IN_FRAMES * dualsense.BT_AUDIO_FRAME_SAMPLES * 2))
+        for sample in samples:
+            value = int(sample * gain)
+            stereo.append(value)
+            stereo.append(value)
+        try:
+            return opus.encode_cbr(stereo, 2, dualsense.BT_AUDIO_FRAME_SAMPLES, dualsense.BT_AUDIO_FRAME_BYTES)
+        except OSError as error:
+            log.warning("cannot encode %s for the controller speaker: %s", spec, error)
+            return None
+
+    @staticmethod
+    def _stream(hidraw: str, frames: list[bytes], stop: threading.Event) -> None:
+        try:
+            fd = os.open(hidraw, os.O_WRONLY | os.O_CLOEXEC)
+        except OSError as error:
+            log.warning("controller speaker: cannot open %s: %s", hidraw, error)
+            return
+        try:
+            os.write(fd, dualsense.build_output_report(True, 0, None, None, speaker=SPEAKER_VOLUME))
+            start = time.monotonic()
+            for index, frame in enumerate(frames):
+                if stop.is_set():
+                    break
+                delay = start + index * dualsense.BT_AUDIO_FRAME_SECONDS - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+                os.write(fd, dualsense.build_audio_report(index, index, frame))
+        except OSError as error:
+            log.debug("controller speaker write failed: %s", error)
+        finally:
+            os.close(fd)
 
 
 def load_state(key: str, default):

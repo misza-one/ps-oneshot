@@ -254,11 +254,15 @@ class Controller:
         The kernel flips both on every mic-button press; call this to put them back to the wanted state."""
         return self._send_output(mic_mute=muted)
 
+    @property
+    def bluetooth(self) -> bool:
+        return self.hid_id.upper().startswith("0005:")
+
     def _send_output(self, right: bytes | None = None, left: bytes | None = None, mic_mute: bool | None = None) -> bool:
         if self.hidraw is None:
             self._warn_hidraw("controller has no hidraw node")
             return False
-        bluetooth = self.hid_id.upper().startswith("0005:")
+        bluetooth = self.bluetooth
         report = build_output_report(bluetooth, self._output_seq, right, left, mic_mute)
         try:
             if self._hidraw_fd < 0:
@@ -363,6 +367,14 @@ _FLAG1_POWER_SAVE = 0x02  # power_save_control is valid; its MIC_MUTE bit cuts t
 _MIC_LED_OFFSET = 8
 _POWER_SAVE_OFFSET = 9
 _POWER_SAVE_MIC_MUTE = 0x10
+_FLAG0_SPEAKER_VOLUME = 0x20
+_FLAG0_AUDIO_CONTROL = 0x80
+_FLAG1_AUDIO_CONTROL2 = 0x80
+_SPEAKER_VOLUME_OFFSET = 5
+_AUDIO_CONTROL_OFFSET = 7
+_AUDIO_CONTROL2_OFFSET = 37
+_AUDIO_PATH_SPEAKER = 0x30  # output path: the right channel to the built-in speaker
+_SPEAKER_PREAMP = 0x02
 _USB_OUTPUT_ID = 0x02
 _USB_OUTPUT_SIZE = 63
 _BT_OUTPUT_ID = 0x31
@@ -373,9 +385,11 @@ _BT_CRC_SEED = b"\xa2"
 
 def build_output_report(
     bluetooth: bool, seq: int, right: bytes | None, left: bytes | None, mic_mute: bool | None = None,
+    speaker: int | None = None,
 ) -> bytes:
     """Output report touching only the given fields (all other valid flags clear, so the kernel's
-    lightbar/rumble/audio state is left alone)."""
+    lightbar/rumble/audio state is left alone). `speaker` (0..255) routes sound to the built-in
+    speaker at that volume."""
     common = bytearray(_COMMON_SIZE)
     for effect, flag, offset in (
         (right, _FLAG0_RIGHT_TRIGGER, _RIGHT_TRIGGER_OFFSET),
@@ -392,6 +406,12 @@ def build_output_report(
         common[1] |= _FLAG1_MIC_LED | _FLAG1_POWER_SAVE
         common[_MIC_LED_OFFSET] = 1 if mic_mute else 0
         common[_POWER_SAVE_OFFSET] = _POWER_SAVE_MIC_MUTE if mic_mute else 0
+    if speaker is not None:
+        common[0] |= _FLAG0_SPEAKER_VOLUME | _FLAG0_AUDIO_CONTROL
+        common[1] |= _FLAG1_AUDIO_CONTROL2
+        common[_SPEAKER_VOLUME_OFFSET] = max(0, min(speaker, 255))
+        common[_AUDIO_CONTROL_OFFSET] = _AUDIO_PATH_SPEAKER
+        common[_AUDIO_CONTROL2_OFFSET] = _SPEAKER_PREAMP
     if not bluetooth:
         return bytes([_USB_OUTPUT_ID]) + bytes(common).ljust(_USB_OUTPUT_SIZE - 1, b"\0")
     report = bytearray(_BT_OUTPUT_SIZE)
@@ -399,6 +419,47 @@ def build_output_report(
     report[1] = (seq & 0x0F) << 4
     report[2] = _BT_OUTPUT_TAG
     report[3 : 3 + _COMMON_SIZE] = common
+    report[-4:] = zlib.crc32(_BT_CRC_SEED + bytes(report[:-4])).to_bytes(4, "little")
+    return bytes(report)
+
+
+# Bluetooth audio: report 0x36 carries one Opus frame for the speaker (no USB audio interface over Bluetooth).
+# Protocol as documented by github.com/GeorgLegato/LinuxAudio4Dualsense5 (reverse-engineered there).
+BT_AUDIO_FRAME_BYTES = 200  # Opus, 48 kHz stereo, hard CBR 160 kbit/s
+BT_AUDIO_FRAME_SAMPLES = 480  # per channel: one 10 ms Opus frame...
+BT_AUDIO_FRAME_SECONDS = 512 / 48_000  # ...that the controller plays over 10.667 ms
+BT_AUDIO_RATE = 45_000  # so audio sampled at 45 kHz comes out at the right pitch
+_BT_AUDIO_ID = 0x36
+_BT_AUDIO_SIZE = 398
+_AUDIO_SECTION = 0x80
+_AUDIO_CONFIG = 0x11
+_AUDIO_STATE = 0x10
+_AUDIO_HAPTICS = 0x12
+_AUDIO_SPEAKER = 0x13
+_AUDIO_STATE_SIZE = 63
+_AUDIO_HAPTICS_SIZE = 64
+_AUDIO_SPEAKER_ONLY = 0xFE  # config mask; bit 0 would stream the microphone back inside the input reports
+
+
+def build_audio_report(seq: int, counter: int, frame: bytes, state: bytes = bytes(_AUDIO_STATE_SIZE)) -> bytes:
+    """Bluetooth report 0x36 with one Opus `frame` for the built-in speaker. Its state section sets no
+    valid flags, so trigger effects, rumble, lights and the mic mute stay exactly as they are."""
+    if len(frame) != BT_AUDIO_FRAME_BYTES or len(state) != _AUDIO_STATE_SIZE:
+        raise ValueError("bad audio frame or state size")
+    report = bytearray(_BT_AUDIO_SIZE)
+    report[0] = _BT_AUDIO_ID
+    report[1] = (seq & 0x0F) << 4
+    position = 2
+    for kind, payload in (
+        (_AUDIO_CONFIG, bytes([_AUDIO_SPEAKER_ONLY, 64, 64, 64, 64, 64, counter & 0xFF])),
+        (_AUDIO_STATE, state),
+        (_AUDIO_HAPTICS, bytes(_AUDIO_HAPTICS_SIZE)),
+        (_AUDIO_SPEAKER, frame),
+    ):
+        report[position] = kind | _AUDIO_SECTION
+        report[position + 1] = len(payload)
+        report[position + 2 : position + 2 + len(payload)] = payload
+        position += 2 + len(payload)
     report[-4:] = zlib.crc32(_BT_CRC_SEED + bytes(report[:-4])).to_bytes(4, "little")
     return bytes(report)
 

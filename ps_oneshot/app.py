@@ -108,6 +108,7 @@ class App:
         self.foot: FootFollower | None = None
         self.brightness = LevelControl(cfg.section("brightness"))
         self.sounds_on = bool(sounds.load_state("sounds", bool(cfg.get("sounds", "enabled"))))
+        self.speaker = sounds.BluetoothSpeaker()
         self.rumble_on = bool(sounds.load_state("rumble", bool(cfg.get("rumble", "enabled"))))
         self._shot_window: tuple[str, float] | None = None  # (window, deadline): next dictation gets sent
         self._text_size: tuple[float, float] | None = None  # (size, when) of our last system text-size step
@@ -483,10 +484,20 @@ class App:
         if codes == [KEY_ENTER]:
             self.dictation.clear(self.window)  # submitted: earlier phrases are no longer editable text
             if self.sounds_on and self._in_agent_window():
-                sounds.play(self.cfg.get("sounds", "submit"), self.cfg.section("sounds"))
+                self._play_sound("submit")
 
     def _in_agent_window(self) -> bool:
         return bool(self._agent_class.search(self.window_class) and self._agent_title.search(self.window_title))
+
+    def _play_sound(self, key: str) -> None:
+        """Sound effect `[sounds] <key>` on the controller's speaker: over Bluetooth straight to the controller,
+        wired through its sound card (sounds.play); the default output when neither can take it."""
+        cfg = self.cfg.section("sounds")
+        if cfg["device"] in ("auto", "controller"):
+            pad = next((p for p in self.pads.values() if p.controller.bluetooth and p.controller.hidraw), None)
+            if pad is not None and self.speaker.play(pad.controller.hidraw, cfg[key], float(cfg["volume"])):
+                return
+        sounds.play(cfg[key], cfg)
 
     # built-in actions ---------------------------------------------------------------
 
@@ -520,7 +531,7 @@ class App:
         if arg == "shoot":
             voxtype = self.cfg.section("voxtype")
             if self.sounds_on:
-                sounds.play(self.cfg.get("sounds", "submit"), self.cfg.section("sounds"))
+                self._play_sound("submit")
             self._shot_kick()
             held = self._last_full[2] if self._last_full else float("inf")
             if held < float(voxtype["quick_shot"]):
@@ -579,7 +590,7 @@ class App:
             return
         self.actions.run("key:" + keys)
         if self.sounds_on:
-            sounds.play(self.cfg.get("sounds", "thinking"), self.cfg.section("sounds"))
+            self._play_sound("thinking")
 
     def _touchpad_action(self, arg: str) -> None:
         touchpad = self.cfg.raw["touchpad"]
@@ -639,7 +650,7 @@ class App:
         sounds.save_state("sounds", self.sounds_on)
         spawn(["notify-send", "-a", APP_NAME, "-t", "1500", f"Sound effects {'on' if self.sounds_on else 'off'}"])
         if self.sounds_on:
-            sounds.play(self.cfg.get("sounds", "submit"), self.cfg.section("sounds"))
+            self._play_sound("submit")
 
     def _rumble_action(self, arg: str) -> None:
         if arg != "toggle":
@@ -818,7 +829,7 @@ class App:
             blocked = any(agent.status == "blocked" for agent in fresh)
             self.rumble(fx.RUMBLE_BLOCKED if blocked else fx.RUMBLE_DONE)
         if self.sounds_on and any(agent.status == "blocked" for agent in fresh):
-            sounds.play(self.cfg.get("sounds", "summon"), self.cfg.section("sounds"))
+            self._play_sound("summon")
         self.menus.refresh_source("herd")
         self.refresh_lights()
 
