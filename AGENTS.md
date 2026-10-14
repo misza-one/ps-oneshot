@@ -126,7 +126,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 ### Invariants
 
 - **Never grab the gamepad node;** other apps and games must still see it. Only the touchpad is grabbed, in mouse mode, while active (`Pad.set_active`).
-- **HID output reports set only the fields they own** (`build_output_report`: trigger, mic-LED and mic-mute (power-save) flags, plus the speaker's volume, path and preamp when routing sound). The lightbar and player LEDs go through the LED class and rumble through FF; otherwise we fight `hid-playstation`. The 0x36 audio reports' state section carries no valid flags at all: copying a full state there (as other tools do) switches the adaptive triggers off and stops rumble on every frame.
+- **HID output reports set only the fields they own** (`build_output_report`: trigger, mic-LED and mic-mute (power-save) flags, plus the speaker's volume, path and preamp when routing sound). The lightbar and player LEDs go through the LED class and rumble through FF; otherwise we fight `hid-playstation`. The 0x36 audio reports' state section carries no valid flags at all. A full state copied there (as LinuxAudio4Dualsense5 sends) marks the trigger, rumble and mic fields valid too, and resets them with every frame.
 - **Overlays never take focus or clicks:** OVERLAY layer, keyboard mode NONE, empty input region. All their input comes from the pad, via `App`.
 - **An open radial or cheat sheet owns the sticks.** Capture is derived (`menus.is_open or cheatsheet.visible`), so call `App._sync_stick_capture()` after changing either one.
 - **A modifier (□) is a layer only when another button is pressed first** (`Held.chord`). In that case its own tap/hold don't fire.
