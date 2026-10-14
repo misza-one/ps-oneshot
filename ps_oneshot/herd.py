@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 from gi.repository import GLib
 
+from . import APP_NAME
+from .actions import spawn
 from .hypr import Hyprland
 
 log = logging.getLogger(__name__)
@@ -38,6 +40,10 @@ KIND_COLORS = {
 }
 HERDR_OPTIONS_WITH_VALUES = {"--session", "--remote", "--remote-keybindings"}
 HERDR_NONCLIENT_FLAGS = {"--no-session", "--default-config", "--skill", "--version", "-V", "--help", "-h"}
+# A non-interactive ssh shell often lacks the dirs herdr gets installed into.
+REMOTE_PATH = '"$HOME/.local/bin:$HOME/bin:$HOME/.local/share/mise/shims:$HOME/.nix-profile/bin:/usr/local/bin:$PATH"'
+# Omaherd's ssh connection masters (its status polling keeps one open per host): riding them is instant.
+OMAHERD_SSH = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "omaherd")
 
 
 @dataclass(frozen=True)
@@ -242,6 +248,28 @@ class HerdProvider:
         ]
         threading.Thread(target=self._focus_sequence, args=(command, agent), daemon=True).start()
 
+    def close(self, agent: Agent) -> None:
+        """Close the agent's herdr pane, which ends the agent, then show the list without it."""
+        if not agent.pane_id:
+            log.info("cannot close %s: no pane id", agent.key)
+            return
+        command = herdr_command(agent.host, agent.session, "pane", "close", agent.pane_id)
+        threading.Thread(target=self._close, args=(command, agent), daemon=True).start()
+
+    def _close(self, command: list[str], agent: Agent) -> None:
+        try:
+            result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+            failure = (result.stderr or result.stdout).strip().splitlines()[-1:] if result.returncode else None
+        except (OSError, subprocess.TimeoutExpired) as error:
+            failure = [str(error)]
+        if failure is not None:
+            reason = failure[0] if failure else "herdr failed"
+            log.warning("closing %s failed: %s", agent.key, reason)
+            spawn(["notify-send", "-a", APP_NAME, "-t", "4000", f"Couldn't close {agent.project}: {reason}"])
+            return
+        log.info("closed %s on %s", agent.project, agent.machine)
+        GLib.idle_add(self._deliver, self._poll())  # gone from the ring now, not at the next poll
+
     def _focus_sequence(self, command: list[str], agent: Agent) -> None:
         try:
             clients = self._hypr.json("clients")
@@ -278,6 +306,19 @@ def _run_detached(command: list[str]) -> None:
         ).wait()
     except OSError as error:
         log.warning("cannot run %s: %s", command[0], error)
+
+
+def herdr_command(host: str, session: str, *args: str, timeout: int = 3) -> list[str]:
+    """`herdr --session <session> <args>` on the agent's machine: here, or over ssh for an SSH host (on
+    Omaherd's connection master when there is one)."""
+    herdr = ["herdr", "--session", session, *args]
+    if host == "local":
+        return herdr
+    options = ["-o", "BatchMode=yes", "-o", f"ConnectTimeout={timeout}"]
+    if os.path.isdir(OMAHERD_SSH):
+        options += ["-o", "ControlMaster=auto", "-o", f"ControlPath={OMAHERD_SSH}/ssh-%C", "-o", "ControlPersist=60"]
+    script = f"PATH={REMOTE_PATH}; export PATH; exec {shlex.join(herdr)}"
+    return ["ssh", *options, "--", host, f"exec /bin/sh -lc {shlex.quote(script)}"]
 
 
 def _option_value(command: list[str], option: str, default: str = "") -> str:

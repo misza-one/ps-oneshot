@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import tempfile
 import time
 import unittest
@@ -13,7 +14,7 @@ from ps_oneshot.apps import DesktopApp, app_for_window, window_of
 from ps_oneshot.config import MenuItem
 from ps_oneshot.dictation import DictationLog
 from ps_oneshot.favorites import Favorites, place, shift
-from ps_oneshot.herd import Agent, agent_in_window, by_machine, session_windows
+from ps_oneshot.herd import Agent, agent_in_window, by_machine, herdr_command, session_windows
 from ps_oneshot.labels import cheatsheet_rows, pair_text, radial_rows
 from ps_oneshot.menus import LOCAL_COLOR, machine_groups
 from ps_oneshot.couch import put_back_entries, take_entries
@@ -166,6 +167,17 @@ class MachineGroupingTest(unittest.TestCase):
             self.assertEqual(session_windows("local", "default", clients, proc), ["0x400", "0x100"])
             self.assertEqual(session_windows("main", "default", clients, proc), ["0x200"])
             self.assertEqual(session_windows("laptop", "default", clients, proc), [])
+
+    def test_herdr_runs_here_or_reaches_the_remote_shell_intact(self):
+        self.assertEqual(herdr_command("local", "default", "pane", "close", "w1:p1"),
+                         ["herdr", "--session", "default", "pane", "close", "w1:p1"])
+        command = herdr_command("main", "my session", "pane", "close", "w4:p10")
+        self.assertEqual(command[0], "ssh")
+        self.assertEqual(command[command.index("--") + 1], "main")
+        _exec, shell, flag, script = shlex.split(command[-1])  # what the remote login shell receives
+        self.assertEqual((shell, flag), ("/bin/sh", "-lc"))
+        self.assertEqual(shlex.split(script.split("; exec ", 1)[1]),
+                         ["herdr", "--session", "my session", "pane", "close", "w4:p10"])
 
 
 class CheatsheetRowsTest(unittest.TestCase):

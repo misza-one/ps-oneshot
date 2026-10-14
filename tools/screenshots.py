@@ -126,7 +126,7 @@ def main() -> int:
     os.makedirs(out, exist_ok=True)
     Gtk.init()
     theme = load_theme()
-    cfg = config.load("/nonexistent")  # the shipped defaults, not this machine's user config
+    cfg = config.load(os.devnull)  # the shipped defaults (an empty user file), not this machine's config
     pictures = {
         "favorites.png": ring(theme, "Omarchy", FAVORITES, 3, [
             ("✕", "Open"), ("□", "Hold: put Files here"), ("△", "Hold: remove"), ("L1 R1", "Move"), ("○", "Close"),
@@ -136,7 +136,7 @@ def main() -> int:
         ], hold=("□", "Pin here", "Files", 0.62)),
         "agents.png": ring(
             theme, "Agents", [s.item for s in agent_slices(agents(), cfg.section("lights"))], 0,
-            [("✕", "Go to agent"), ("○", "Close")],
+            [("✕", "Go to agent"), ("△", "Hold: close agent"), ("○", "Close")],
         ),
         "cheatsheet.png": cheat_sheet(theme, cfg),
     }

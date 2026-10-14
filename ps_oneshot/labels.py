@@ -190,7 +190,10 @@ def cheatsheet_sections(cfg: Config) -> list[Section]:
         if rest:
             sections.append(("Voice, agents & menus", cheatsheet_rows(rest, titles)))
     controls = [("Stick", "Select"), ("✕", "Confirm"), ("○", "Back / close"), ("D-pad ← →", "Step selection")]
-    if any(radial.source == "favorites" or uses_source(radial.items, "favorites") for radial in cfg.radials.values()):
+    radials = cfg.radials.values()
+    if any(radial.source == "herd" or uses_source(radial.items, "herd") for radial in radials):
+        controls.append(("△ (hold)", "Agent: close it"))
+    if any(radial.source == "favorites" or uses_source(radial.items, "favorites") for radial in radials):
         controls += [
             ("✕ on Add", "Favorite: pick an app"), ("□ (hold)", "Favorite: pin the current window"),
             ("△ (hold)", "Favorite: remove"), ("L1 / R1", "Favorite: move"),

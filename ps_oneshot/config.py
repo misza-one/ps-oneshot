@@ -319,6 +319,10 @@ def _validate_item_actions(path: str, items: tuple[MenuItem, ...], radials: dict
 
 
 def load(path: str | None = None) -> Config:
+    """Defaults, preset, then `path` (default: the user config, which may be absent). A file named
+    explicitly has to exist: silently running on the defaults instead would match any DualSense."""
+    if path is not None and not os.path.exists(path):
+        raise ConfigError(f"{path}: no such file")
     path = path or USER_CONFIG
     raw = _default("base")
     sources = ["defaults/base.toml"]

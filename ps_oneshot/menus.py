@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from functools import partial
 
 from gi.repository import GLib
 
@@ -292,8 +293,8 @@ class RadialMenus:
             if chosen is not None:
                 self._activate(chosen)
         elif button in ("square", "triangle"):
-            if chosen is not None and chosen.favorite is not None:
-                self._start_hold(button, chosen.favorite, chosen.item.label)
+            if chosen is not None:
+                self._start_hold(button, chosen)
         elif button in ("l1", "r1"):
             if chosen is not None and chosen.favorite is not None:
                 self._move(chosen.favorite, -1 if button == "l1" else 1)
@@ -319,7 +320,10 @@ class RadialMenus:
             return [("Stick", "Choose"), back]
         if chosen.favorite is None:
             verb = "Open" if chosen.children or chosen.source else "Go to agent" if chosen.agent else "Select"
-            return [("✕", verb), back]
+            rows = [("✕", verb)]
+            if chosen.agent is not None and self.herd is not None:
+                rows.append(("△", "Hold: close agent"))
+            return [*rows, back]
         filled = self.favorites.slots[chosen.favorite] is not None
         rows = [("✕", "Open" if filled else "Pick an app")]
         verb = self._pin_verb(chosen.favorite)
@@ -354,7 +358,7 @@ class RadialMenus:
                 for source in {view.source, *(item.source for item in view.items if item.inline)} - {None}:
                     self.refresh_source(source)
 
-    # favorites ---------------------------------------------------------------------
+    # holds and favorites ---------------------------------------------------------
 
     def _pin_verb(self, index: int) -> str | None:
         """What holding □ on slot `index` does with the focused window's app: "put" it there, "move" it
@@ -366,31 +370,51 @@ class RadialMenus:
             return None
         return "move" if any(slot and slot["action"] == action for slot in self.favorites.slots) else "put"
 
-    def _start_hold(self, button: str, index: int, label: str) -> None:
-        """□ pins and △ removes only once held for input.hold_ms, so a stray press changes nothing.
-        Meanwhile the hub says what's about to happen and fills a ring."""
-        if button == "square":
-            verb, app = self._pin_verb(index), self._pin_app
-            hold = ("□", "Move here" if verb == "move" else "Pin here", app.name) if verb and app else None
-        else:
-            hold = ("△", "Remove", label) if self.favorites.slots[index] is not None else None
-        if hold is None:
+    def _start_hold(self, button: str, chosen: Slice) -> None:
+        """□ and △ act only once held for input.hold_ms, so a stray press changes nothing. Meanwhile the hub
+        says what's about to happen and fills a ring."""
+        plan = self._hold_plan(button, chosen)
+        if plan is None:
             self.hooks.rumble(fx.RUMBLE_NOTHING)
             return
+        (glyph, verb, name), finish = plan
         self._cancel_hold()
         ms = int(self.cfg.get("input", "hold_ms"))
-        self._hold = (button, GLib.timeout_add(ms, self._hold_done, button, index))
-        self.ui.set_hold(*hold, ms / 1000)
+        self._hold = (button, GLib.timeout_add(ms, self._hold_done, finish))
+        self.ui.set_hold(glyph, verb, name, ms / 1000)
 
-    def _hold_done(self, button: str, index: int) -> bool:
+    def _hold_plan(self, button: str, chosen: Slice) -> tuple[tuple[str, str, str], Callable[[], None]] | None:
+        """What holding `button` on the slice does: (glyph, verb, name) for the hub, and the action. On an
+        agent △ closes it; on a favorite □ pins the focused window's app there and △ empties the slot."""
+        if chosen.agent is not None:
+            if button == "triangle" and self.herd is not None:
+                return ("△", "Close", chosen.item.label), partial(self.herd.close, chosen.agent)
+            return None
+        if chosen.favorite is None:
+            return None
+        index = chosen.favorite
+        if button == "square":
+            verb, app = self._pin_verb(index), self._pin_app
+            if verb and app:
+                return ("□", "Move here" if verb == "move" else "Pin here", app.name), partial(self._pin, index, app)
+            return None
+        if self.favorites.slots[index] is not None:
+            return ("△", "Remove", chosen.item.label), partial(self._remove, index)
+        return None
+
+    def _pin(self, index: int, app: DesktopApp) -> None:
+        self.favorites.pin(index, app)
+        self._reload_favorites(index)
+
+    def _remove(self, index: int) -> None:
+        self.favorites.remove(index)
+        self._reload_favorites(index)
+
+    def _hold_done(self, finish: Callable[[], None]) -> bool:
         self._hold = None
         self.ui.clear_hold()
-        if button == "square" and self._pin_app is not None:
-            self.favorites.pin(index, self._pin_app)
-        elif button == "triangle":
-            self.favorites.remove(index)
         self.hooks.rumble(fx.RUMBLE_CONFIRM)
-        self._reload_favorites(index)
+        finish()
         return False
 
     def _cancel_hold(self) -> None:
