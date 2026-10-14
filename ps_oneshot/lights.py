@@ -10,7 +10,7 @@ RGB = tuple[int, int, int]
 # (strong, weak, duration_ms, pause_after_ms)
 RUMBLE_BLOCKED = ((1.0, 0.6, 110, 90), (1.0, 0.6, 110, 0))
 RUMBLE_DONE = ((0.0, 0.75, 90, 0),)
-RUMBLE_TICK = ((0.0, 0.22, 16, 0),)
+RUMBLE_TICK = ((0.6, 0.6, 40, 0),)  # shorter pulses barely move the DualSense's actuators, whatever their strength
 RUMBLE_CONFIRM = ((0.35, 0.0, 40, 0),)
 RUMBLE_NOTHING = ((0.0, 0.3, 30, 60), (0.0, 0.3, 30, 0))
 RUMBLE_PAUSE = ((0.6, 0.0, 70, 70), (0.3, 0.0, 70, 0))

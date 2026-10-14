@@ -20,6 +20,7 @@
 #   ui:cheatsheet      toggle the cheat sheet (hidden on release when bound to press/hold)
 #   app:pause          toggle pause (game mode)
 #   sounds:toggle      switch the sound effects (see [sounds]) on/off; remembered
+#   sounds:louder|quieter  sound effects volume up/down by 10%; remembered
 #   rumble:toggle      switch vibration (rumble and the trigger kick) on/off; remembered
 #   zoom:in|out|reset  text size in the focused window, with that app's own zoom keys (see [zoom])
 #   text:bigger|smaller|reset  system-wide text size, stepping through [text] stops
@@ -51,7 +52,7 @@
 # Radial items: { label, icon, action | items = [...] | source, keep_open, inline }
 #   source = "herd" | "audio" | "voxtype-language" | "settings" | "favorites" builds the content live: a
 #   submenu, or spliced straight into the ring with inline = true. "settings" holds PS One Shot's own
-#   switches (couch mode, sounds, vibration, mouse speed, cheat sheet, pause), each showing its state.
+#   switches (couch mode, sounds and their volume, vibration, mouse speed, cheat sheet, pause), each showing its state.
 #   "favorites" are the [favorites] slots, which you change right in the ring.
 
 preset = "auto" # auto | hyprland | omarchy
@@ -116,7 +117,7 @@ paused = [20, 40, 140]
 
 [rumble]
 enabled = true      # starting state; rumble:toggle flips it and remembers the choice
-feedback = true     # tiny ticks on radial selection and mode changes
+feedback = true     # a tick on every radial selection and mode change
 herd_alerts = true  # buzz when an agent starts waiting or finishes
 
 [brightness]
@@ -227,7 +228,7 @@ enabled = false                # starting state; sounds:toggle flips it and reme
 submit = "builtin:blaster"     # ✕ sends Enter to an agent window, or an R2 shot ("" = silent)
 thinking = "builtin:charge"    # agent:thinking
 summon = "builtin:beacon"      # an agent starts waiting for you (together with the rumble)
-volume = 0.8
+volume = 0.8                   # 0.1-1.0; sounds:louder/quieter (Effects +/− in the ring) step it, remembered
 device = "auto"                # auto | controller (its speaker only, else silent) | system
 
 [modifiers]

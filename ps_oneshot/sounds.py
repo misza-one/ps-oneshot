@@ -171,8 +171,9 @@ def resample(samples: array.array, source_rate: int, target_rate: int) -> array.
 
 class BluetoothSpeaker:
     """Sound effects on a DualSense's built-in speaker over Bluetooth: Opus frames in HID output reports
-    (0x36), paced to the controller's audio clock. The reports set only the speaker's own fields, so adaptive
-    triggers, rumble and lights carry on untouched. Encoded sounds are kept, so each is encoded once."""
+    (0x36), paced to the controller's audio clock. The reports set only the speaker's own fields plus the
+    rumble-mode bit (without it the controller stops a running rumble), so adaptive triggers, rumble and
+    lights carry on untouched. Encoded sounds are kept, so each is encoded once."""
 
     def __init__(self) -> None:
         self._encoded: dict[tuple[str, float], list[bytes] | None] = {}
@@ -217,7 +218,7 @@ class BluetoothSpeaker:
             log.warning("controller speaker: cannot open %s: %s", hidraw, error)
             return
         try:
-            os.write(fd, dualsense.build_output_report(True, 0, None, None, speaker=SPEAKER_VOLUME))
+            os.write(fd, dualsense.build_output_report(True, 0, None, None, speaker=SPEAKER_VOLUME, keep_rumble=True))
             start = time.monotonic()
             for index, frame in enumerate(frames):
                 if stop.is_set():

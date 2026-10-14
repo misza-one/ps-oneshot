@@ -39,10 +39,10 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
   - `dictation.CaptureWatcher`: VoxType `post_process` tee file → `DictationLog`, used for L2 undo.
   - VoxType state file: an R2 "shot" presses Enter only once it reads `idle`.
 - **Outputs**
-  - `lights.LightEngine.frame` drives the sysfs LED-class lightbar and player LEDs, plus evdev FF rumble.
+  - `lights.LightEngine.frame` drives the sysfs LED-class lightbar and player LEDs, plus evdev FF rumble. `App.refresh_lights` holds the LED writes while `Controller.rumbling` (they would stop our rumble, see the HID invariant) and keeps ticking until it's over.
   - Trigger effects and the mic mute (LED + the built-in mic's hardware mute, `power_save_control`) go out as hidraw output reports (`dualsense.build_output_report`). The kernel toggles that mute on every mic-button press; `App._sync_mic_mute` puts it back to the system mic state.
   - Overlays: `ui.radial.RadialMenu` and `ui.cheatsheet.CheatSheet`.
-  - Sounds: `App._play_sound`. Wired, `sounds.play` runs `pw-play` (to the controller's sound card when it has one). Over Bluetooth, `sounds.BluetoothSpeaker`: samples at 45 kHz (`dualsense.BT_AUDIO_RATE`), Opus CBR frames of 200 bytes via `linux.opus` (ctypes libopus, optional), cached per sound and volume; a worker thread sends a speaker-routing 0x31 (`build_output_report(speaker=…)`), then one `build_audio_report` (0x36) every 512/48000 s. A newer sound cuts off the playing one.
+  - Sounds: `App._play_sound`. Wired, `sounds.play` runs `pw-play` (to the controller's sound card when it has one). Over Bluetooth, `sounds.BluetoothSpeaker`: samples at 45 kHz (`dualsense.BT_AUDIO_RATE`), Opus CBR frames of 200 bytes via `linux.opus` (ctypes libopus, optional), cached per sound and volume; a worker thread sends a speaker-routing 0x31 (`build_output_report(speaker=…, keep_rumble=True)`), then one `build_audio_report` (0x36) every 512/48000 s. A newer sound cuts off the playing one. `[sounds] volume` steps at runtime with `sounds:louder|quieter` (Effects +/− in the settings ring, whose hub shows the level through `Choice.detail`).
 - **Radial menus:** `menus.RadialMenus` owns the view stack and calls back through `menus.Hooks`. Its live sources are `herd`, `audio`, `voxtype-language`, `settings` and `favorites`. Every selection change goes through `RadialMenus._sync`, which also sends `_legend` (what each button does on the selected slice) to the overlay's bottom-right panel (`RadialMenu.set_legend`).
 - **Favorites** (`favorites.Favorites`): slots saved as state key `favorites` (entries shaped like config items, `None` = empty), seeded from `[favorites] items` until the first edit. In an open ring, a favorites slice (`Slice.favorite` = slot index) takes:
   - □ and △ only as holds of `input.hold_ms` (`_start_hold`, which asks `_hold_plan` what the button does on that slice; agent slices take △ = close too): □ pins the focused window's app (`Favorites.candidate`, looked up when the ring is built), △ empties the slot. Meanwhile `RadialMenu.set_hold` shows what's about to happen in the hub and fills a ring in the button's colour. Release (`on_release`), another button or a selection change cancels.
@@ -67,7 +67,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 ## Development Commands
 
 ```sh
-python -m unittest discover -s tests                   # full suite: 90 tests, well under a second
+python -m unittest discover -s tests                   # full suite: 96 tests, well under a second
 python -m unittest discover -s tests -k vibration      # by name pattern
 python -m unittest tests.test_core.ConfigTest          # module/class/method (works without tests/__init__.py)
 ruff check --select F,E9 ps_oneshot tests tools        # lint used in practice; pyproject has no ruff config
@@ -107,7 +107,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
   - Anything that shows overlays calls `preload.ensure_layer_shell_preload()` first. It re-execs with `LD_PRELOAD=libgtk4-layer-shell.so`.
 - **State**
   - Config is data (`Config.raw` plus parsed `layers`, `modifiers`, `radials`).
-  - Runtime toggles persist in `$XDG_STATE_HOME/ps-oneshot/state.json` via `sounds.load_state` / `sounds.save_state` (keys `sounds`, `rumble`, `touchpad_sensitivity`, `couch`, `couch_bar`, `favorites`). They override the config at startup.
+  - Runtime toggles persist in `$XDG_STATE_HOME/ps-oneshot/state.json` via `sounds.load_state` / `sounds.save_state` (keys `sounds`, `sounds_volume`, `rumble`, `touchpad_sensitivity`, `couch`, `couch_bar`, `favorites`). They override the config at startup.
 - **Config placement**
   - Generic Hyprland defaults go in `defaults/base.toml`. Anything calling `omarchy-*`, `omarchy-shell` or VoxType goes in `defaults/omarchy.toml`.
   - Tables merge and lists replace, so overriding `radial.apps.items` replaces the whole ring.
@@ -126,7 +126,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 ### Invariants
 
 - **Never grab the gamepad node;** other apps and games must still see it. Only the touchpad is grabbed, in mouse mode, while active (`Pad.set_active`).
-- **HID output reports set only the fields they own** (`build_output_report`: trigger, mic-LED and mic-mute (power-save) flags, plus the speaker's volume, path and preamp when routing sound). The lightbar and player LEDs go through the LED class and rumble through FF; otherwise we fight `hid-playstation`. The 0x36 audio reports' state section carries no valid flags at all. A full state copied there (as LinuxAudio4Dualsense5 sends) marks the trigger, rumble and mic fields valid too, and resets them with every frame.
+- **HID output reports set only the fields they own** (`build_output_report`: trigger, mic-LED and mic-mute (power-save) flags, plus the speaker's volume, path and preamp when routing sound). The lightbar and player LEDs go through the LED class and rumble through FF; otherwise we fight `hid-playstation`. One bit is everyone's: HAPTICS_SELECT (flag0 bit 1, "rumble, not audio haptics"). The controller stops a running rumble on any report without it, so ours set it while `Controller.rumbling`, the audio reports always do, and the 0x36 state section carries nothing else. A full state copied there (as LinuxAudio4Dualsense5 sends) marks the trigger, rumble and mic fields valid too, and resets them with every frame.
 - **Overlays never take focus or clicks:** OVERLAY layer, keyboard mode NONE, empty input region. All their input comes from the pad, via `App`.
 - **An open radial or cheat sheet owns the sticks.** Capture is derived (`menus.is_open or cheatsheet.visible`), so call `App._sync_stick_capture()` after changing either one.
 - **A modifier (□) is a layer only when another button is pressed first** (`Held.chord`). In that case its own tap/hold don't fire.

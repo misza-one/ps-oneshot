@@ -116,6 +116,8 @@ class App:
         self._voxtype_state = capture_path(cfg.get("voxtype", "state_file"))
         touchpad = cfg.raw["touchpad"]
         touchpad["sensitivity"] = float(sounds.load_state("touchpad_sensitivity", touchpad["sensitivity"]))
+        sounds_cfg = cfg.raw["sounds"]
+        sounds_cfg["volume"] = float(sounds.load_state("sounds_volume", sounds_cfg["volume"]))
 
         self.pads: dict[str, Pad] = {}
         self.held: dict[tuple[str, str], Held] = {}
@@ -493,6 +495,8 @@ class App:
         """Sound effect `[sounds] <key>` on the controller's speaker: over Bluetooth straight to the controller,
         wired through its sound card (sounds.play); the default output when neither can take it."""
         cfg = self.cfg.section("sounds")
+        if not cfg[key]:
+            return  # "" = silent
         if cfg["device"] in ("auto", "controller"):
             pad = next((p for p in self.pads.values() if p.controller.bluetooth and p.controller.hidraw), None)
             if pad is not None and self.speaker.play(pad.controller.hidraw, cfg[key], float(cfg["volume"])):
@@ -643,6 +647,15 @@ class App:
             self._show_cheatsheet()
 
     def _sounds_action(self, arg: str) -> None:
+        if arg in ("louder", "quieter"):
+            cfg = self.cfg.raw["sounds"]
+            step = 0.1 if arg == "louder" else -0.1
+            cfg["volume"] = round(min(1.0, max(0.1, float(cfg["volume"]) + step)), 2)
+            sounds.save_state("sounds_volume", cfg["volume"])
+            spawn(["notify-send", "-a", APP_NAME, "-t", "1200", f"Sound effects volume {cfg['volume']:.0%}"])
+            if self.sounds_on:
+                self._play_sound("submit")  # hear the new level
+            return
         if arg != "toggle":
             log.warning("unknown sounds action %r", arg)
             return
@@ -732,9 +745,10 @@ class App:
 
     def _settings_choices(self) -> list[Choice]:
         """The "settings" radial source: PS One Shot's own switches. Ring order is clockwise from the top:
-        couch mode on top, toggles upper left/right, mouse speed slower left / faster right, then
-        pause and the cheat sheet at the bottom."""
+        couch mode on top, toggles upper left/right, mouse speed and effects volume down on the left / up on
+        the right, then pause and the cheat sheet at the bottom. Steppers show their level in the hub."""
         speed = f"speed {self.cfg.raw['touchpad']['sensitivity']:.2f}"
+        volume = f"volume {self.cfg.get('sounds', 'volume'):.0%}"
         couch = self.couch.active
         return [
             # Not keep_open: the screen rescales under the ring.
@@ -742,10 +756,12 @@ class App:
                    sublabel="on" if couch else "off"),
             Choice(label="Vibration", icon="\U000f0566" if self.rumble_on else "\U000f0cd9", action="rumble:toggle",
                    sublabel="on" if self.rumble_on else "off", active=self.rumble_on, keep_open=True),
-            Choice(label="Mouse faster", icon="\uf067", action="touchpad:faster", sublabel=speed, keep_open=True),
-            Choice(label="Pause", icon="\uf04c", action="app:pause", sublabel="hold PS to resume"),
+            Choice(label="Mouse +", icon="\uf067", action="touchpad:faster", detail=speed, keep_open=True),
+            Choice(label="Effects +", icon="\U000f075d", action="sounds:louder", detail=volume, keep_open=True),
+            Choice(label="Pause", icon="\uf04c", action="app:pause", detail="hold PS to resume"),
             Choice(label="Cheat sheet", icon="\uf11c", action="ui:cheatsheet"),
-            Choice(label="Mouse slower", icon="\uf068", action="touchpad:slower", sublabel=speed, keep_open=True),
+            Choice(label="Effects −", icon="\U000f075e", action="sounds:quieter", detail=volume, keep_open=True),
+            Choice(label="Mouse −", icon="\uf068", action="touchpad:slower", detail=speed, keep_open=True),
             Choice(label="Sounds", icon="\uf028" if self.sounds_on else "\uf026", action="sounds:toggle",
                    sublabel="on" if self.sounds_on else "off", active=self.sounds_on, keep_open=True),
         ]
@@ -850,11 +866,14 @@ class App:
 
     def refresh_lights(self) -> bool:
         frame = self.lights.frame(self._light_inputs(), time.monotonic())
-        if frame is not None:
+        # A lightbar write goes out as a kernel report without the rumble-mode bit, and the controller stops a
+        # running rumble on those, so the lights wait (ticking on) until our rumble is over.
+        rumbling = any(pad.controller.rumbling for pad in self.pads.values())
+        if frame is not None and not rumbling:
             for pad in self.pads.values():
                 pad.controller.set_lightbar(frame.rgb, frame.brightness)
                 pad.controller.set_player_leds(frame.player_mask)
-        animate = frame is not None and frame.animated and bool(self.pads)
+        animate = frame is not None and (frame.animated or rumbling) and bool(self.pads)
         if animate and not self._light_timer:
             self._light_timer = GLib.timeout_add(LIGHT_FRAME_MS, self._light_tick)
         return animate

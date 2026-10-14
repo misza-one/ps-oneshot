@@ -190,7 +190,7 @@ class RadialMenus:
     def _choice_slices(choices: list[Choice]) -> list[Slice]:
         return [
             Slice(
-                item=RadialItem(label=c.label, icon=c.icon, sublabel=c.sublabel, active=c.active),
+                item=RadialItem(label=c.label, icon=c.icon, sublabel=c.sublabel, detail=c.detail, active=c.active),
                 action=c.action,
                 keep_open=c.keep_open,
             )

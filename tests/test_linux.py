@@ -339,9 +339,26 @@ class OutputReportTest(unittest.TestCase):
         others = [i for i in range(len(common)) if i not in (0, 1, 5, 7, 37)]
         self.assertEqual(bytes(common[i] for i in others), bytes(len(others)))  # triggers, rumble, LEDs, mute: 0
 
+    def test_reports_during_our_rumble_keep_it_running(self) -> None:
+        # The controller stops a running rumble on any report without HAPTICS_SELECT (flag0 bit 1).
+        class Gamepad:
+            def rumble(self, strong: float, weak: float, ms: int) -> bool:
+                return True
+
+        with tempfile.NamedTemporaryFile() as node:
+            ctrl = Controller(hid_id="0005:054C:0CE6.0017", name=DS, gamepad=Gamepad(),  # type: ignore[arg-type]
+                              hidraw=node.name)
+            ctrl.set_trigger_effect(left=trigger_off())
+            self.assertTrue(ctrl.rumble(1.0, 0.5, 60_000))
+            ctrl.set_trigger_effect(left=trigger_off())
+            ctrl._close_hidraw()
+            data = node.read()
+        self.assertEqual((data[3], data[78 + 3]), (0x08, 0x0A))  # left trigger; + HAPTICS_SELECT while rumbling
+        self.assertEqual(data[78 + 3 + 2 : 78 + 3 + 4], bytes(2))  # the motor values stay untouched
+
 
 class BluetoothAudioReportTest(unittest.TestCase):
-    def test_layout_crc_and_a_state_that_changes_nothing(self) -> None:
+    def test_layout_crc_and_a_state_that_only_keeps_rumble(self) -> None:
         frame = bytes(range(200))
         report = build_audio_report(0x13, 0x107, frame)
         self.assertEqual(len(report), 398)
@@ -349,7 +366,9 @@ class BluetoothAudioReportTest(unittest.TestCase):
         # Sections: (kind | 0x80, length, payload) at fixed places.
         self.assertEqual(report[2:11], bytes([0x91, 7, 0xFE, 64, 64, 64, 64, 64, 0x07]))  # speaker only, no mic
         self.assertEqual(report[11:13], bytes([0x90, 63]))
-        self.assertEqual(report[13:76], bytes(63))  # no valid flags: triggers, rumble, lights, mic mute untouched
+        # State: HAPTICS_SELECT alone keeps a running rumble; no valid flags, so triggers, rumble strength,
+        # lights and the mic mute stay as they are.
+        self.assertEqual(report[13:76], bytes([0x02]) + bytes(62))
         self.assertEqual(report[76:78], bytes([0x92, 64]))
         self.assertEqual(report[142:144], bytes([0x93, 200]))
         self.assertEqual(report[144:344], frame)

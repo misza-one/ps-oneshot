@@ -8,6 +8,7 @@ import glob
 import logging
 import os
 import re
+import time
 import zlib
 from dataclasses import dataclass, field
 
@@ -181,6 +182,7 @@ class Controller:
     _hidraw_fd: int = field(default=-1, repr=False)
     _hidraw_warned: bool = field(default=False, repr=False)
     _output_seq: int = field(default=0, repr=False)
+    _rumble_until: float = field(default=0.0, repr=False)
 
     def _max(self, led: str) -> int:
         cached = self._max_brightness.get(led)
@@ -241,7 +243,16 @@ class Controller:
         return (int(capacity) if capacity and capacity.isdigit() else None), status
 
     def rumble(self, strong: float, weak: float, ms: int) -> bool:
-        return self.gamepad.rumble(strong, weak, ms)
+        started = self.gamepad.rumble(strong, weak, ms)
+        if started:
+            self._rumble_until = max(self._rumble_until, time.monotonic() + ms / 1000)
+        return started
+
+    @property
+    def rumbling(self) -> bool:
+        """A rumble we started is still playing. The controller stops a running rumble on any output report
+        without HAPTICS_SELECT, so ours carry it meanwhile, and lightbar writes (kernel reports) should wait."""
+        return time.monotonic() < self._rumble_until
 
     def set_trigger_effect(self, right: bytes | None = None, left: bytes | None = None) -> bool:
         """Send adaptive-trigger effects (from `trigger_*`) through a hidraw output report."""
@@ -263,7 +274,7 @@ class Controller:
             self._warn_hidraw("controller has no hidraw node")
             return False
         bluetooth = self.bluetooth
-        report = build_output_report(bluetooth, self._output_seq, right, left, mic_mute)
+        report = build_output_report(bluetooth, self._output_seq, right, left, mic_mute, keep_rumble=self.rumbling)
         try:
             if self._hidraw_fd < 0:
                 self._hidraw_fd = os.open(self.hidraw, os.O_WRONLY | os.O_CLOEXEC)
@@ -358,6 +369,7 @@ def trigger_vibration(position: int, amplitude: int, frequency: int) -> bytes:
 
 # hid-playstation `struct dualsense_output_report_common` (47 bytes) and its framing.
 _COMMON_SIZE = 47
+_FLAG0_HAPTICS_SELECT = 0x02  # "rumble, not audio haptics": a report without it stops a running rumble
 _FLAG0_RIGHT_TRIGGER = 0x04
 _FLAG0_LEFT_TRIGGER = 0x08
 _RIGHT_TRIGGER_OFFSET = 10
@@ -385,12 +397,14 @@ _BT_CRC_SEED = b"\xa2"
 
 def build_output_report(
     bluetooth: bool, seq: int, right: bytes | None, left: bytes | None, mic_mute: bool | None = None,
-    speaker: int | None = None,
+    speaker: int | None = None, keep_rumble: bool = False,
 ) -> bytes:
     """Output report touching only the given fields (all other valid flags clear, so the kernel's
     lightbar/rumble/audio state is left alone). `speaker` (0..255) routes sound to the built-in
-    speaker at that volume."""
+    speaker at that volume. `keep_rumble` adds HAPTICS_SELECT, without which a running rumble stops."""
     common = bytearray(_COMMON_SIZE)
+    if keep_rumble:
+        common[0] |= _FLAG0_HAPTICS_SELECT
     for effect, flag, offset in (
         (right, _FLAG0_RIGHT_TRIGGER, _RIGHT_TRIGGER_OFFSET),
         (left, _FLAG0_LEFT_TRIGGER, _LEFT_TRIGGER_OFFSET),
@@ -441,18 +455,18 @@ _AUDIO_HAPTICS_SIZE = 64
 _AUDIO_SPEAKER_ONLY = 0xFE  # config mask; bit 0 would stream the microphone back inside the input reports
 
 
-def build_audio_report(seq: int, counter: int, frame: bytes, state: bytes = bytes(_AUDIO_STATE_SIZE)) -> bytes:
-    """Bluetooth report 0x36 with one Opus `frame` for the built-in speaker. Its state section sets no
-    valid flags, so trigger effects, rumble, lights and the mic mute stay exactly as they are."""
-    if len(frame) != BT_AUDIO_FRAME_BYTES or len(state) != _AUDIO_STATE_SIZE:
-        raise ValueError("bad audio frame or state size")
+def build_audio_report(seq: int, counter: int, frame: bytes) -> bytes:
+    """Bluetooth report 0x36 with one Opus `frame` for the built-in speaker. Its state section sets no valid
+    flags, only HAPTICS_SELECT, so trigger effects, rumble, lights and the mic mute carry on as they are."""
+    if len(frame) != BT_AUDIO_FRAME_BYTES:
+        raise ValueError(f"audio frame must be {BT_AUDIO_FRAME_BYTES} bytes, got {len(frame)}")
     report = bytearray(_BT_AUDIO_SIZE)
     report[0] = _BT_AUDIO_ID
     report[1] = (seq & 0x0F) << 4
     position = 2
     for kind, payload in (
         (_AUDIO_CONFIG, bytes([_AUDIO_SPEAKER_ONLY, 64, 64, 64, 64, 64, counter & 0xFF])),
-        (_AUDIO_STATE, state),
+        (_AUDIO_STATE, bytes([_FLAG0_HAPTICS_SELECT]).ljust(_AUDIO_STATE_SIZE, b"\0")),
         (_AUDIO_HAPTICS, bytes(_AUDIO_HAPTICS_SIZE)),
         (_AUDIO_SPEAKER, frame),
     ):
