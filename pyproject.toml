@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ps-oneshot"
+version = "0.1.0"
+description = "Drive a Hyprland desktop with a PlayStation DualSense controller: radial menus, workspaces, lightbar status."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = ["PyGObject>=3.42"]
+keywords = ["hyprland", "dualsense", "ps5", "controller", "wayland", "omarchy"]
+classifiers = [
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Desktop Environment :: Window Managers",
+]
+
+[project.urls]
+Homepage = "https://github.com/misza-one/ps-oneshot"
+
+[project.scripts]
+ps-oneshot = "ps_oneshot.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["ps_oneshot*"]
+
+[tool.setuptools.package-data]
+ps_oneshot = ["defaults/*.toml"]

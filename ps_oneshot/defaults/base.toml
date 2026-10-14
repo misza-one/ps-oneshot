@@ -1,0 +1,358 @@
+# PS One Shot defaults for any Hyprland desktop.
+# Override anything in ~/.config/ps-oneshot/config.toml (tables merge, lists/values replace).
+#
+# Action syntax
+#   wm:<op> [arg]      window-manager op, works on Lua and legacy Hyprland configs:
+#                      workspace <ws> | focus <l|r|u|d> | swap <dir> | movetoworkspace <ws>
+#                      fullscreen | maximize | float | pin | close | special <name>
+#                      cyclenext | cycleprev | monitor <+1|-1>
+#   dispatch:<expr>    raw `hyprctl dispatch` payload
+#   exec:<command>     shell command, detached
+#   key:<combos>       virtual keyboard; space-separated sequence, e.g. key:ctrl+shift+tab or key:shift+home backspace
+#   radial:<name>      open the radial menu [radial.<name>]
+#   herd:jump          focus the most urgent agent (repeat to cycle)
+#   dictation:back     erase the last dictation in this window (none left: erase a word)
+#   dictation:clear    erase every dictation since the last Enter (none left: erase the line)
+#   dictation:shoot    stop dictating, then press Enter once the text is typed; plays sounds.submit.
+#                      Pulled quicker than voxtype.quick_shot (nothing said): just Enter.
+#   agent:thinking     next thinking level in the focused agent ([agents] keys per agent kind)
+#   touchpad:slower    touchpad pointer speed down / touchpad:faster up (remembered)
+#   ui:cheatsheet      toggle the cheat sheet (hidden on release when bound to press/hold)
+#   app:pause          toggle pause (game mode)
+#   sounds:toggle      switch the sound effects (see [sounds]) on/off; remembered
+#   rumble:toggle      switch vibration (rumble and the trigger kick) on/off; remembered
+#   zoom:in|out|reset  text size in the focused window, with that app's own zoom keys (see [zoom])
+#   text:bigger|smaller|reset  system-wide text size, stepping through [text] stops
+#   couch:toggle|on|off  Couch Coding Mode: the whole screen bigger, to read it from the couch (see [couch])
+#   brightness:up|down   screen brightness one [brightness] step; hold with repeat = true to glide
+#   launch:<desktop id>  focus the app's open window, or start it ([apps] launch); e.g. launch:org.gnome.Nautilus.desktop
+#
+# Binding forms
+#   button = "<action>"                               run on press
+#   button = { press, release, tap, hold, repeat, light, desc }
+#     tap     runs on release when held shorter than input.hold_ms
+#     hold    runs once the button is held for input.hold_ms
+#     repeat  auto-repeats `press` while held
+#     light   lightbar state while held ("recording")
+#   trigger = { press, release, soft, full, light }   l2/r2 only: analog press in two stages.
+#     press   runs as soon as the trigger passes triggers.soft_at; release when it's let go
+#     soft    runs on release when the trigger never reached triggers.full_at
+#     full    runs the moment it passes triggers.full_at (DualSense: right after the "click")
+#   button = ""                                       remove a default binding
+#
+# Modifiers ([modifiers] button = "layer"): while held, [bindings.<layer>] wins over normal.
+# The modifier's own normal binding still works: press/release as usual, tap on a short press
+# and hold after input.hold_ms, both only when no other button was pressed first.
+#
+# Buttons: cross circle triangle square l1 r1 l2 r2 l3 r3 create options ps mic touchpad
+#          dpad_up dpad_down dpad_left dpad_right
+#          lstick_up/down/left/right rstick_up/down/left/right (sticks in "buttons" mode)
+#
+# Radial items: { label, icon, action | items = [...] | source, keep_open, inline }
+#   source = "herd" | "audio" | "voxtype-language" | "settings" | "favorites" builds the content live: a
+#   submenu, or spliced straight into the ring with inline = true. "settings" holds PS One Shot's own
+#   switches (couch mode, sounds, vibration, mouse speed, cheat sheet, pause), each showing its state.
+#   "favorites" are the [favorites] slots, which you change right in the ring.
+
+preset = "auto" # auto | hyprland | omarchy
+
+[devices]
+match = "DualSense|Wireless Controller"
+ignore = "ps-oneshot|Steam|Virtual|Motion Sensors"
+rescan_seconds = 2
+
+[input]
+hold_ms = 450
+repeat_delay_ms = 350
+repeat_interval_ms = 90
+stick_deadzone = 0.18
+radial_deadzone = 0.55
+stick_button_at = 0.6  # "buttons" mode: deflection that presses a direction
+
+[sticks]
+left = "buttons"  # none | scroll | pointer | buttons (acts as four lstick_* buttons)
+right = "scroll"
+scroll_speed = 16     # notches per second at full deflection
+pointer_speed = 1400  # pixels per second at full deflection
+
+[triggers]
+soft_at = 0.12        # analog travel that counts as a press
+full_at = 0.8         # analog travel that counts as a full press
+adaptive = true       # DualSense: resistance + click at the full-press point of staged triggers
+click_zone = [4, 6]   # resistance from zone 4 to 6 of 0..9, then it snaps through
+click_strength = 6    # 1..8
+
+[touchpad]
+mode = "mouse"  # mouse: PS One Shot owns the touchpad (one finger moves, tap clicks, two fingers
+                #        scroll) | system: leave it alone
+click = "mouse" # physical press: mouse | button (the `touchpad` binding instead)
+                # mouse: one finger = left button, two fingers = right button; hold to drag
+sensitivity = 0.6
+scroll_speed = 1.0
+tap_to_click = true
+natural_scroll = true
+
+[game]
+# Pause automatically while the focused window looks like a game.
+pause_classes = '^(steam_app_\d+|gamescope|steam_proton|.*\.exe)$'
+pause_titles = '^Steam Big Picture Mode$'
+
+[menu]
+# While a layer surface with one of these namespaces is open, the `menu` layer is active.
+namespaces = '^(omarchy-menu|rofi|wofi|walker|fuzzel|anyrun|launcher)$'
+
+[lights]
+enabled = true
+brightness = 1.0
+idle_brightness = 0.12
+recording = [255, 0, 0]  # push-to-talk active
+recording_pulse = 0.8    # seconds per pulse (faster than the agent alerts); 0 = solid
+blocked = [220, 68, 68]
+done = [232, 196, 64]
+alert_style = "blink"    # agent alerts: blink (hard on/off) | breathe
+blink_period = 1.0       # seconds per on/off cycle
+battery_low = [255, 110, 0]
+paused = [20, 40, 140]
+
+[rumble]
+enabled = true      # starting state; rumble:toggle flips it and remembers the choice
+feedback = true     # tiny ticks on radial selection and mode changes
+herd_alerts = true  # buzz when an agent starts waiting or finishes
+
+[brightness]
+# brightness:up / brightness:down: `get` prints the level in percent, `set` takes {value} (0–100).
+# One `set` runs at a time and a held button only moves the target, so slow DDC/CI monitors glide.
+get = "brightnessctl -m | cut -d, -f4 | tr -d %"
+set = "brightnessctl set {value}%"
+step = 5
+
+[text]
+# System-wide text size (text:bigger / text:smaller / text:reset): `get` prints the current size,
+# `set` applies the next of the ascending `stops` ({size}). Generic Hyprland: GTK's text scaling.
+get = "gsettings get org.gnome.desktop.interface text-scaling-factor"
+set = "gsettings set org.gnome.desktop.interface text-scaling-factor {size}"
+reset = "gsettings reset org.gnome.desktop.interface text-scaling-factor"
+stops = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0]
+
+[foot]
+# foot can't reload foot.ini. With follow, PS One Shot watches its font size and replays a change
+# in every open foot window as zoom steps (whatever changed it: a text-size knob, a script, an editor).
+follow = true
+after = []   # actions run once the open windows were resized
+
+[zoom]
+# zoom:in / zoom:out / zoom:reset press the focused app's own text-size keys: [bigger, smaller, reset].
+# Keypad +/− type the same on every keyboard layout (minus/equal don't: a German layout turns them
+# into ß and ´), and foot, Alacritty, browsers and VS Code all zoom with them. Window classes that
+# need other keys are matched by regex in [zoom.classes].
+keys = ["ctrl+kpplus", "ctrl+kpminus", "ctrl+0"]
+
+[zoom.classes]
+"^kitty$" = ["ctrl+shift+kpplus", "ctrl+shift+kpminus", "ctrl+shift+backspace"]
+'^(com\.mitchellh\.ghostty|org\.wezfurlong\.wezterm)$' = ["ctrl+equal", "ctrl+minus", "ctrl+0"]  # no keypad zoom
+
+[couch]
+# Couch Coding Mode (couch:toggle): multiplies the monitor scale, so text, windows, the bar and the
+# overlays all grow (Hyprland rounds to the nearest scale that fits the mode). Leaving reloads the
+# Hyprland config, which restores every monitor exactly as configured.
+scale = 1.5        # e.g. 2 → 3
+monitors = []      # connector names, e.g. ["DP-3"]; [] = the focused monitor
+# Actions run once the screen is scaled up / restored. A monitor-profile daemon (hyprmoncfgd, kanshi…)
+# puts the old scale back within seconds, so pause it here, e.g.
+# enter = ["exec:systemctl --user stop hyprmoncfgd"], exit = ["exec:systemctl --user start hyprmoncfgd"]
+enter = []
+exit = []
+# Omarchy bar widget ids (bar.layout in ~/.config/omarchy/shell.json) taken off while couch mode is on,
+# since a bigger scale leaves less room. Omarchy switches off third-party widgets that aren't on the
+# bar, so whatever they do stops until couch mode ends; its own omarchy.* widgets just hide.
+bar_hide = []
+
+[battery]
+low = 20
+critical = 10
+
+[herd]
+enabled = "auto"  # auto: on when the status command exists
+status_command = ["omarchy-shell", "io.github.salemsayed.omaherd", "status"]
+status_fallback = ["python3", "~/.config/omarchy/plugins/io.github.salemsayed.omaherd/omaherd-status.py", "--skip-discovery"]
+attach = "~/.config/omarchy/plugins/io.github.salemsayed.omaherd/omaherd-attach"
+terminal = "xdg-terminal-exec"
+interval = 2.0
+jump_cycle_seconds = 4.0
+
+[dictation]
+# Text written here by a dictation tool becomes undoable (see README: VoxType post_process hook).
+capture_file = "$XDG_RUNTIME_DIR/ps-oneshot/dictation"
+terminal_classes = '^(foot|kitty|Alacritty|com\.mitchellh\.ghostty|org\.wezfurlong\.wezterm|xterm.*)$'
+erase_word = "ctrl+backspace"
+erase_word_terminal = "ctrl+w"
+erase_line = "shift+home backspace"
+erase_line_terminal = "ctrl+u"
+
+[voxtype]
+get_language = "voxtype config get whisper.language"
+set_language = "voxtype config set whisper.language {code} && systemctl --user restart voxtype"
+shoot = "voxtype record stop"
+cancel = "voxtype record cancel"
+quick_shot = 0.5   # seconds: an R2 pulled through faster than this sends Enter without dictating
+state_file = "$XDG_RUNTIME_DIR/voxtype/state"  # a shot sends Enter once this reads "idle" again
+languages = [
+  { code = "auto", label = "Auto" },
+  { code = "en", label = "English" },
+  { code = "de", label = "Deutsch" },
+  { code = "es", label = "Español" },
+  { code = "fr", label = "Français" },
+  { code = "pl", label = "Polski" },
+]
+
+[audio]
+set_output = "wpctl set-default {id}"
+set_input = "wpctl set-default {id}"
+
+[agents]
+# Agent windows: herdr titles its terminal "host: workspace". The send sound and agent:thinking
+# only act there.
+window_classes = '^(foot|kitty|Alacritty|com\.mitchellh\.ghostty|org\.wezfurlong\.wezterm)$'
+window_titles = '^[^\s:]+: \S'  # '' = any title
+# Each agent CLI's key for its thinking level; the kind comes from Omaherd (the agent in the
+# focused herdr pane). Kinds not listed get thinking_default ("" = do nothing).
+thinking = { omp = "shift+tab", pi = "shift+tab", claude = "alt+t" }
+thinking_default = ""
+thinking_elsewhere = ""        # action when the focused window isn't an agent window
+
+[sounds]
+# Sound effects. They play on the controller's speaker while it's wired (USB); over Bluetooth
+# Linux has no audio path to it, so "auto" uses the default output instead.
+enabled = false                # starting state; sounds:toggle flips it and remembers the choice
+submit = "builtin:blaster"     # ✕ sends Enter to an agent window, or an R2 shot ("" = silent)
+thinking = "builtin:charge"    # agent:thinking
+summon = "builtin:beacon"      # an agent starts waiting for you (together with the rumble)
+volume = 0.8
+device = "auto"                # auto | controller (wired speaker only) | system
+
+[modifiers]
+square = "window"
+circle = "adjust"
+
+[bindings.normal]
+l1 = "wm:workspace r-1"   # r±1: the neighbouring workspace on this monitor, empty ones included (e±1 skips them)
+r1 = "wm:workspace r+1"
+dpad_left = "wm:focus l"
+dpad_right = "wm:focus r"
+dpad_up = "wm:focus u"
+dpad_down = "wm:focus d"
+lstick_up = { press = "key:up", repeat = true }
+lstick_down = { press = "key:down", repeat = true }
+lstick_left = { press = "key:left", repeat = true }
+lstick_right = { press = "key:right", repeat = true }
+cross = "key:enter"
+circle = { tap = "key:esc", desc = "Esc / hold: adjust (volume, brightness, text)" }
+square = { tap = "wm:maximize", hold = "wm:fullscreen", desc = "Full width / hold: fullscreen" }
+triangle = { hold = "wm:close", desc = "Close window (hold)" }
+l2 = { soft = "dictation:back", full = "dictation:clear", desc = "Erase dictation: soft = last, full = all" }
+l3 = "radial:apps"
+r3 = "radial:herd"
+ps = { tap = "herd:jump", hold = "app:pause", desc = "Jump to waiting agent / hold: pause" }
+create = { tap = "ui:cheatsheet", desc = "Cheat sheet (○ or Create again closes it)" }
+options = { tap = "agent:thinking", desc = "Agent: next thinking level" }
+mic = { tap = "exec:wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle", hold = "radial:voice", desc = "Mute mic / hold: language + devices" }
+
+[bindings.window]
+dpad_left = "wm:swap l"
+dpad_right = "wm:swap r"
+dpad_up = "wm:swap u"
+dpad_down = "wm:swap d"
+l1 = "wm:movetoworkspace r-1"
+r1 = "wm:movetoworkspace r+1"
+cross = "wm:special scratchpad"
+circle = "wm:maximize"
+triangle = "wm:float"
+
+[bindings.adjust]
+# While ○ is held: on-the-fly settings. D-pad ↑↓ volume, ←→ screen brightness; the left stick sets
+# the system text size, the right stick the focused window's own text zoom; clicking a stick resets it.
+# (A stick in scroll/pointer mode acts as buttons while a held layer binds it.)
+dpad_up = { press = "exec:wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+", repeat = true, desc = "Volume up" }
+dpad_down = { press = "exec:wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-", repeat = true, desc = "Volume down" }
+dpad_right = { press = "brightness:up", repeat = true, desc = "Brighter" }
+dpad_left = { press = "brightness:down", repeat = true, desc = "Darker" }
+lstick_up = { press = "text:bigger", desc = "System text bigger" }
+lstick_down = { press = "text:smaller", desc = "System text smaller" }
+l3 = { press = "text:reset", desc = "System text size reset" }
+rstick_up = { press = "zoom:in", repeat = true, desc = "Text bigger (focused window)" }
+rstick_down = { press = "zoom:out", repeat = true, desc = "Text smaller (focused window)" }
+r3 = { press = "zoom:reset", desc = "Text size reset (focused window)" }
+
+[bindings.menu]
+dpad_up = { press = "key:up", repeat = true }
+dpad_down = { press = "key:down", repeat = true }
+dpad_left = { press = "key:left", repeat = true }
+dpad_right = { press = "key:right", repeat = true }
+cross = "key:enter"
+circle = "key:esc"
+square = { press = "key:backspace", repeat = true }
+# Long lists (Omarchy menu, clipboard, emojis, rofi, fuzzel) page with Page Up/Down; Tab does little there.
+l1 = { press = "key:pageup", repeat = true, desc = "Page up" }
+r1 = { press = "key:pagedown", repeat = true, desc = "Page down" }
+
+[apps]
+# How launch: starts a desktop app: {id} = its desktop file id, {path} = the .desktop file.
+launch = "gtk4-launch {id}"
+
+[favorites]
+# Slots in a radial ring that you fill from the controller; the ring remembers them (state file).
+#   ✕ on an empty slot ("Add") picks from a list: the items below, then every installed app.
+#   Holding □ pins the focused window's app to the selected slot, holding △ empties it, L1/R1 move it.
+# `items` only seeds the slots until you change one. { action = "launch:<desktop id>" } takes the app's
+# name and icon; { label, icon, action } runs any action.
+slots = 6
+items = [
+  { label = "Terminal", icon = "\uf120", action = "exec:xdg-terminal-exec" },
+  { label = "Files", icon = "\uf07b", action = "exec:xdg-open ~" },
+]
+# Any dmenu-style list: the choices come on stdin, the picked line goes to stdout.
+# e.g. "wofi --dmenu", "rofi -dmenu", "walker --dmenu"
+picker = "fuzzel --dmenu --prompt 'Add: '"
+
+[radial.apps]
+title = "Apps"
+# Icons are Nerd Font code points; any text works.
+items = [
+  { label = "Favorites", source = "favorites", inline = true },
+  { label = "PS One Shot", icon = "\uf11b", source = "settings" },
+  { label = "System", icon = "\uf013", items = [
+    { label = "Window", icon = "\uf2d0", items = [
+      { label = "Fullscreen", icon = "\uf065", action = "wm:fullscreen" },
+      { label = "Maximize", icon = "\uf2d0", action = "wm:maximize" },
+      { label = "Float", icon = "\uf2d2", action = "wm:float" },
+      { label = "Pin", icon = "\uf08d", action = "wm:pin" },
+      { label = "Scratchpad", icon = "\uf249", action = "wm:special scratchpad" },
+      { label = "Text bigger", icon = "\uf00e", action = "zoom:in", keep_open = true },
+      { label = "Text smaller", icon = "\uf010", action = "zoom:out", keep_open = true },
+      { label = "Text reset", icon = "\uf034", action = "zoom:reset", keep_open = true },
+    ] },
+    { label = "Audio", icon = "\uf028", items = [
+      { label = "Devices", icon = "\uf025", source = "audio" },
+      { label = "Volume +", icon = "\uf028", action = "exec:wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+", keep_open = true },
+      { label = "Play/Pause", icon = "\uf04b", action = "exec:playerctl play-pause" },
+      { label = "Next", icon = "\uf051", action = "exec:playerctl next" },
+      { label = "Mute mic", icon = "\uf131", action = "exec:wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle" },
+      { label = "Volume -", icon = "\uf027", action = "exec:wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-", keep_open = true },
+      { label = "Previous", icon = "\uf048", action = "exec:playerctl previous" },
+      { label = "Mute", icon = "\uf026", action = "exec:wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" },
+    ] },
+    { label = "Dictation", icon = "\uf130", source = "voxtype-language" },
+    { label = "Lock", icon = "\uf023", action = "exec:loginctl lock-session" },
+  ] },
+]
+
+[radial.voice]
+title = "Voice"
+items = [
+  { label = "Language", source = "voxtype-language", inline = true },
+  { label = "Devices", icon = "\uf025", source = "audio" },
+]
+
+[radial.herd]
+title = "Agents"
+source = "herd"

@@ -1,0 +1,122 @@
+# Omarchy preset: merged over base.toml when `omarchy` is installed (preset = "auto") or
+# preset = "omarchy". Uses Omarchy's own commands so behaviour matches its keybindings.
+
+[herd]
+terminal = "omarchy-launch-terminal"
+
+[audio]
+set_output = "omarchy-audio-output-set-default {id} {name}"
+set_input = "omarchy-audio-input-set-default {id} {name}"
+
+[agents]
+thinking_elsewhere = "exec:omarchy-menu toggle"
+
+[menu]
+# Omarchy's shell pickers are menus too: the theme and background grids (image selector), clipboard
+# history, emojis, the keybindings panel and password prompts all take the D-pad, ✕ and ○.
+namespaces = '^(omarchy-(menu|image-selector|clipboard|emojis|keyboard-panel|polkit)|rofi|wofi|walker|fuzzel|anyrun|launcher)$'
+
+[brightness]
+# The focused monitor: laptop backlight, or DDC/CI on an external one; shows Omarchy's OSD.
+get = "omarchy-brightness-display"
+set = "omarchy-brightness-display {value}%"
+
+[text]
+# Omarchy's one text-size knob (the monitor panel's Text size): shell, GTK apps and terminal configs.
+# Open foot windows follow too ([foot] follow), so its "Restart Foot" notice is moot.
+get = "omarchy-display-text-size"
+set = "omarchy-display-text-size {size}"
+reset = "omarchy-display-text-size reset"
+stops = [9, 10, 11, 12, 14, 16, 20]  # the panel's notches (px)
+
+[foot]
+after = ["exec:omarchy-shell notifications dismiss 'Restart Foot'"]
+
+[couch]
+# VoxType's waveform OSD measures the screen once, at start: restart it (VoxType respawns it in a
+# second) so it isn't left below the bottom edge of the rescaled screen.
+enter = ["exec:pkill -x voxtype-osd-gtk"]
+exit = ["exec:pkill -x voxtype-osd-gtk"]
+bar_hide = [
+  "omarchy.keyboard-layout", "omarchy.weather", "omarchy.system-update", "omarchy.tray",
+  "omarchy.tailscale", "omarchy.agents", "omarchy.bluetooth", "omarchy.monitor",
+]
+
+[modifiers]
+create = "style"  # Create held + a button: Omarchy's look (a short press is still the cheat sheet)
+
+[bindings.normal]
+options = { tap = "agent:thinking", hold = "exec:omarchy-menu toggle", desc = "Agent: next thinking level / hold: Omarchy menu" }
+create = { tap = "ui:cheatsheet", hold = "exec:omarchy-menu-keybindings", desc = "Cheat sheet / hold: Omarchy keybindings (Super+K)" }
+r2 = { press = "exec:voxtype record start", release = "exec:voxtype record stop", full = "dictation:shoot", light = "recording", desc = "Talk (hold) / pull through: send (quick pull: Enter)" }
+mic = { tap = "exec:omarchy-audio-input-mute", hold = "radial:voice", desc = "Mute mic / hold: language + devices" }
+# The radials open when the stick click is let go, so a long click can do something else.
+l3 = { tap = "radial:apps", hold = "exec:omarchy-agent --pick", desc = "Favorites radial / hold: new agent (Super+Shift+Ctrl+A)" }
+r3 = { tap = "radial:herd", hold = "exec:omarchy-shell shell toggle omarchy.clipboard", desc = "Agents radial / hold: clipboard history (Super+Ctrl+V)" }
+
+[bindings.window]
+options = { press = "exec:omarchy-menu toggle system", desc = "System menu (Super+Esc)" }
+circle = { press = "exec:omarchy-hyprland-workspace-layout-toggle", desc = "Workspace layout: dwindle ↔ scrolling (Super+L)" }
+
+[bindings.adjust]
+dpad_up = { press = "exec:omarchy-audio-output-volume raise", repeat = true, desc = "Volume up" }
+dpad_down = { press = "exec:omarchy-audio-output-volume lower", repeat = true, desc = "Volume down" }
+
+[bindings.style]
+options = { press = "exec:omarchy-menu toggle theme", desc = "Theme menu (Super+Shift+Ctrl+Space)" }
+square = { press = "exec:omarchy-menu toggle background", desc = "This theme's backgrounds (Super+Ctrl+Space)" }
+dpad_right = { press = "exec:omarchy-theme-bg-next", desc = "Next background" }
+
+[apps]
+launch = "uwsm-app -- {id}"  # how Omarchy starts apps: each in its own systemd unit
+
+[favorites]
+items = [
+  { label = "Terminal", icon = "\uf120", action = "exec:omarchy-launch-terminal" },
+  { label = "Browser", icon = "\uf0ac", action = "exec:omarchy-launch-browser" },
+  { label = "Files", icon = "\uf07b", action = "exec:omarchy-launch-nautilus" },
+  { label = "Editor", icon = "\uf044", action = "exec:omarchy-launch-editor" },
+  { label = "Music", icon = "\uf001", action = "exec:omarchy-launch-spotify" },
+]
+picker = "omarchy-menu-select 'Add to favorites'"
+
+[radial.apps]
+title = "Omarchy"
+items = [
+  { label = "Favorites", source = "favorites", inline = true },
+  { label = "PS One Shot", icon = "\uf11b", source = "settings" },
+  { label = "System", icon = "\uf013", items = [
+    { label = "Apps", icon = "\uf00a", action = "exec:omarchy-menu toggle apps" },
+    { label = "Window", icon = "\uf2d0", items = [
+      { label = "Fullscreen", icon = "\uf065", action = "wm:fullscreen" },
+      { label = "Maximize", icon = "\uf2d0", action = "wm:maximize" },
+      { label = "Float", icon = "\uf2d2", action = "wm:float" },
+      { label = "Pop out", icon = "\uf08d", action = "exec:omarchy-hyprland-window-pop" },
+      { label = "Scratchpad", icon = "\uf249", action = "wm:special scratchpad" },
+      { label = "Layout", icon = "\U000F10AC", action = "exec:omarchy-hyprland-workspace-layout-toggle" },
+      { label = "Text bigger", icon = "\uf00e", action = "zoom:in", keep_open = true },
+      { label = "Text smaller", icon = "\uf010", action = "zoom:out", keep_open = true },
+      { label = "Text reset", icon = "\uf034", action = "zoom:reset", keep_open = true },
+    ] },
+    { label = "Audio", icon = "\uf028", items = [
+      { label = "Devices", icon = "\uf025", source = "audio" },
+      { label = "Volume +", icon = "\uf028", action = "exec:omarchy-audio-output-volume raise", keep_open = true },
+      { label = "Play/Pause", icon = "\uf04b", action = "exec:omarchy-shell media playPause" },
+      { label = "Next", icon = "\uf051", action = "exec:omarchy-shell media next" },
+      { label = "Mute mic", icon = "\uf131", action = "exec:omarchy-audio-input-mute" },
+      { label = "Volume -", icon = "\uf027", action = "exec:omarchy-audio-output-volume lower", keep_open = true },
+      { label = "Previous", icon = "\uf048", action = "exec:omarchy-shell media previous" },
+      { label = "Mute", icon = "\uf026", action = "exec:omarchy-audio-output-volume mute-toggle" },
+    ] },
+    { label = "Notifications", icon = "\uf0f3", items = [
+      { label = "Dismiss", icon = "\uf00d", action = "exec:omarchy-shell notifications dismissOne", keep_open = true },
+      { label = "Open last", icon = "\uf35d", action = "exec:omarchy-shell notifications invokeLast" },
+      { label = "History", icon = "\uf1da", action = "exec:omarchy-shell notifications showHistory" },
+      { label = "Silence", icon = "\uf1f6", action = "exec:omarchy-toggle-notification-silencing" },
+      { label = "Dismiss all", icon = "\uf1f8", action = "exec:omarchy-shell notifications dismissAll" },
+    ] },
+    { label = "Dictation", icon = "\uf130", source = "voxtype-language" },
+    { label = "Screenshot", icon = "\uf030", action = "exec:omarchy-capture-screenshot" },
+    { label = "Lock", icon = "\uf023", action = "exec:omarchy-system-lock" },
+  ] },
+]

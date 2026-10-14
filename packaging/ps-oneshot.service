@@ -1,0 +1,13 @@
+[Unit]
+Description=PS One Shot - DualSense controller for Hyprland
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/ps-oneshot
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
