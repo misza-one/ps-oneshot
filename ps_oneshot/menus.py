@@ -58,6 +58,7 @@ class Hooks:
     settings: Callable[[], list[Choice]]  # the app's own toggles for the "settings" source
     window_class: Callable[[], str]  # the focused window's, for pinning it as a favorite
     paused: Callable[[], bool]
+    battery: Callable[[], tuple[int, bool] | None]  # (percent, charging) of the controller, for the overlay's corner
 
 
 def machine_groups(agents: list[Agent]) -> dict[str, tuple[str, RGB]]:
@@ -224,6 +225,7 @@ class RadialMenus:
         self._cancel_hold()
         view = self.stack[-1]
         self.ui.show(view.title, [s.item for s in view.slices], self.hooks.monitor())
+        self.ui.set_battery(self.hooks.battery())
         self._sync()
 
     def _sync(self) -> None:

@@ -29,6 +29,7 @@ from ps_oneshot.ui.theme import Theme, load_theme  # noqa: E402
 
 SCALE = 1.5  # pixels per logical pixel: sharp in GitHub's README column
 SCREEN = (1920, 1080)  # the logical monitor the overlays size themselves for
+BATTERY = (75, False)  # the radial's corner panel: percent, charging
 
 FAVORITE = {"group": "Favorites", "group_color": INLINE_COLOR}
 FAVORITES = [
@@ -95,6 +96,7 @@ def ring(
     menu._selection = selection
     menu._pop = [1.0 if index == selection else 0.0 for index in range(len(items))]
     menu._legend = legend
+    menu._battery = BATTERY
     if hold is not None:
         glyph, verb, label, progress = hold  # progress of a one-second hold
         menu._hold = _Hold(glyph, verb, label, time.monotonic() - progress, 1.0)

@@ -100,7 +100,7 @@ class App:
         self.menus = RadialMenus(cfg, RadialMenu(load_theme), self.herd, self.favorites, Hooks(
             run_action=self.actions.run, rumble=self.rumble, monitor=lambda: self.monitor,
             capture_sticks=self._sync_stick_capture, settings=self._settings_choices,
-            window_class=lambda: self.window_class, paused=lambda: self.paused,
+            window_class=lambda: self.window_class, paused=lambda: self.paused, battery=self._battery_level,
         ))
         self.dictation = DictationLog(suffix=_voxtype_suffix())
         self.capture: CaptureWatcher | None = None
@@ -920,6 +920,15 @@ class App:
             self.battery_low = low_any
             self.refresh_lights()
         return True
+
+    def _battery_level(self) -> tuple[int, bool] | None:
+        """(percent, charging) of the emptiest controller, shown in an open radial's corner."""
+        levels = []
+        for pad in self.pads.values():
+            capacity, status = pad.controller.battery_state()
+            if capacity is not None:
+                levels.append((capacity, status.lower() == "charging"))
+        return min(levels, default=None)
 
 
 def _voxtype_suffix() -> str:

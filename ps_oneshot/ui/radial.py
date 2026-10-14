@@ -44,6 +44,10 @@ MARQUEE_SPEED = 2.2  # how fast it scrolls, in text heights per second
 IMAGE_LOOKUP_PX = 128  # app icons are looked up once at this size (× the display scale) and scaled to fit
 LEGEND_TEXT = 0.056  # legend text size, of the ring radius
 LEGEND_MARGIN = 0.04  # legend distance from the corner of the drawing area, of the ring radius
+# The battery panel in the opposite corner: Material Design battery glyphs by tenth of charge (outline for
+# 0-9 %, 10 … 90, full), the same 10 % steps the controller reports in.
+BATTERY_ICONS = ("\U000f008e", *(chr(0xF007A + tenth) for tenth in range(9)), "\U000f0079")
+BATTERY_CHARGING = "\U000f0084"
 
 
 def marquee_offset(overflow: float, speed: float, elapsed: float, pause: float = MARQUEE_PAUSE) -> float:
@@ -155,6 +159,7 @@ class RadialMenu(Overlay):
         self._marquee_running = False  # the selected slice's name is scrolling (keeps frames coming)
         self._images: dict[str, Gdk.Paintable | None] = {}
         self._legend: list[tuple[str, str]] = []  # (button, what it does) for the corner panel
+        self._battery: tuple[int, bool] | None = None  # (percent, charging) for the bottom-left panel
         self._hold: _Hold | None = None
 
     def show(self, title: str, items: list[RadialItem], monitor: str | None) -> None:
@@ -188,6 +193,12 @@ class RadialMenu(Overlay):
         """What the buttons do right now, listed in the bottom-right corner."""
         if rows != self._legend:
             self._legend = list(rows)
+            self._queue_draw()
+
+    def set_battery(self, level: tuple[int, bool] | None) -> None:
+        """The controller's charge (percent, charging) for the bottom-left corner; None hides it."""
+        if level != self._battery:
+            self._battery = level
             self._queue_draw()
 
     def set_hold(self, glyph: str, title: str, label: str, seconds: float) -> None:
@@ -294,6 +305,7 @@ class RadialMenu(Overlay):
             self._draw_group_label(cr, context, theme, ring, group, count)
         self._draw_centre(cr, context, theme, ring, count)
         self._draw_legend(cr, context, theme, ring, width, height)
+        self._draw_battery(cr, context, theme, ring, width, height)
         self._sync_pulse()  # frames while a name scrolls
 
     def _tint(self, item: RadialItem, theme: Theme) -> RGB:
@@ -720,6 +732,29 @@ class RadialMenu(Overlay):
             text_y = y + (cap_h - layout_size(text)[1]) / 2
             draw_layout(cr, text, x + inset + max(caps) + gap, text_y, theme.foreground, 0.85, centered=False)
             y += cap_h + row_gap
+
+    def _draw_battery(
+        self, cr: cairo.Context, context: Pango.Context, theme: Theme, ring: _Ring, width: int, height: int
+    ) -> None:
+        """The controller's charge in a panel at the bottom-left corner, level with the legend."""
+        if self._battery is None:
+            return
+        percent, charging = self._battery
+        icon = BATTERY_CHARGING if charging else BATTERY_ICONS[max(0, min(percent // 10, 10))]
+        size = ring.outer * LEGEND_TEXT
+        text = make_layout(context, theme, f"{icon} {percent}%", size, weight=Pango.Weight.BOLD)
+        text_w, text_h = layout_size(text)
+        inset = size * 0.85
+        panel_w, panel_h = text_w + 2 * inset, text_h + 2 * size * 0.18 + 2 * inset  # a one-row legend's height
+        x = -width / 2 + ring.outer * LEGEND_MARGIN
+        y = height / 2 - ring.outer * LEGEND_MARGIN - panel_h
+        rounded_rect(cr, x, y, panel_w, panel_h, size * 0.8)
+        cr.set_source_rgba(*theme.surface, 0.9)
+        cr.fill_preserve()
+        cr.set_line_width(1.0)
+        cr.set_source_rgba(*theme.muted, 0.3)
+        cr.stroke()
+        draw_layout(cr, text, x + panel_w / 2, y + panel_h / 2, theme.foreground, 0.85)
 
 
 def _rgb(color: tuple[int, int, int]) -> RGB:
