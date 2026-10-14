@@ -63,7 +63,7 @@ L3 opens your favorites, R3 opens agents, holding the mic button opens voice. Pi
   - L1/R1 move a favorite one slot.
 - **Agents** (R3) are grouped by machine: local agents first, then each SSH host, each with its own coloured arc and hostname. Every slice shows the project, its herdr tab (or task title) and a status badge. Going to an agent (here or with PS) brings up the herdr window already showing that session, the most recently used one if there are several, and switches it to the agent. A new terminal opens only when no window shows the session yet. Holding △ on an agent closes it: its herdr pane, here or on the SSH host. As with favorites, the centre names the agent while a ring fills up, and letting go early changes nothing.
 - **Voice** (hold the mic button) puts the dictation languages straight on the ring (the current one checked) plus a Devices submenu with every output and input; picking a device makes it the default and moves playing streams.
-- **PS One Shot** (L3) holds the app's own switches: couch mode, sound effects and vibration on/off (icon, ✓ and on/off show the current state), the effects volume and the touchpad pointer speed (Effects +/−, Mouse +/−; the level shows in the middle of the ring), the cheat sheet and pause. Toggles and steppers stay open for another press and are remembered across restarts. Vibration off silences every rumble and the shot's trigger kick; the triggers' resistance stays.
+- **PS One Shot** (L3) holds the app's own switches: couch mode, sound effects and vibration on/off (icon, ✓ and on/off show the current state), the effects volume and the touchpad pointer speed (Effects +/−, Mouse +/−; the level shows in the middle of the ring), the cheat sheet and pause. Sounds, vibration and the steppers keep the ring open for another press and are remembered across restarts. Vibration off silences every rumble and the shot's trigger kick; the triggers' resistance stays.
 
 <br clear="right">
 
@@ -112,7 +112,7 @@ Requirements:
 - Python ≥ 3.11 with PyGObject, GTK 4 and gtk4-layer-shell,
 - a [Nerd Font](https://www.nerdfonts.com) for the menu icons (Omarchy ships one; without it the menus show text only).
 
-Optional: [VoxType](https://voxtype.io) for dictation, [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) for agent status, PipeWire (`pw-play`) for sound effects.
+Optional: [VoxType](https://voxtype.io) for dictation, [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) for agent status, PipeWire (`pw-play`) for sound effects, and libopus (`opus` on Arch) to play them on the controller over Bluetooth.
 
 On Arch:
 
@@ -167,7 +167,7 @@ click_strength = 4
 thinking = { omp = "shift+tab", claude = "alt+t", codex = "" }
 
 [sounds]
-summon = "~/sounds/r2d2.ogg"                               # any file pw-play can read; "" = silent
+summon = "~/sounds/r2d2.wav"                               # any file pw-play can read; "" = silent
 
 [voxtype]
 languages = [{ code = "en", label = "English" }, { code = "pl", label = "Polski" }]
@@ -213,7 +213,7 @@ This isn't a native VoxType feature, so keep a few things in mind:
 
 ## Known issues
 
-- **Bluetooth sound is reverse-engineered.** Over Bluetooth the controller takes Opus-encoded audio in an undocumented HID report (0x36), which PS One Shot builds itself. It needs the system's libopus. It plays the built-in sounds and 16-bit WAV files; any other file plays on your normal output instead (`[sounds] device = "controller"` keeps it silent). A controller firmware update could change the protocol.
+- **Bluetooth sound is reverse-engineered.** Over Bluetooth the controller takes Opus-encoded audio in an undocumented HID report (0x36), which PS One Shot builds itself. It needs the system's libopus and is tested on the original DualSense only. It plays the built-in sounds and 16-bit WAV files; any other file plays on your normal output instead (`[sounds] device = "controller"` keeps it silent). A controller firmware update could change the protocol.
 - **Other programs' rumble stops while the lightbar animates.** The controller ends a running rumble on any output report without its rumble-mode bit, and the kernel's lightbar updates don't carry it. PS One Shot holds its lightbar animation while its own rumble plays, but it can't see other programs' rumble. Games are fine: in game mode it leaves the lightbar alone.
 - **Thinking level is cycled blind.** Agents don't publish their current thinking level, so the controller sends the agent's "next level" key and the same power-up sound plays every time.
 - **OpenRGB fights over the lightbar.** If OpenRGB (or a tool built on it) also detects the controller, both write the lightbar and colours flicker or mix. Disable OpenRGB's "Sony DualSense" detector.
