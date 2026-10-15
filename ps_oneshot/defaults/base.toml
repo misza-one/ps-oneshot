@@ -224,7 +224,7 @@ thinking_elsewhere = ""        # action when the focused window isn't an agent w
 [sounds]
 # Sound effects, on the controller's speaker: wired through its sound card, over Bluetooth sent to it directly
 # (needs libopus; built-in sounds and 16-bit WAV files). Elsewhere "auto" uses the default output.
-enabled = false                # starting state; sounds:toggle flips it and remembers the choice
+enabled = true                 # starting state; sounds:toggle flips it and remembers the choice
 submit = "builtin:blaster"     # ✕ sends Enter to an agent window, or an R2 shot ("" = silent)
 thinking = "builtin:charge"    # agent:thinking
 summon = "builtin:beacon"      # an agent starts waiting for you (together with the rumble)
