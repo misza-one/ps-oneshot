@@ -17,6 +17,7 @@ from ps_oneshot.ui.overlay import (
     draw_layout,
     ease_out,
     glyph_markup,
+    css_rgba,
     hex_rgb,
     layout_size,
     make_layout,
@@ -39,8 +40,15 @@ GROUP_ARC_WIDTH = 0.024
 GROUP_LABEL_GAP = 0.035
 GROUP_LABEL_MAX_WIDTH = 0.62
 CHECK_GLYPHS = ("\uf00c", "✓")  # Nerd Font check, then a plain fallback
+# Soft halo under the donut to lift it off whatever is behind, in units of the donut radius: full
+# strength out to HALO_INNER, gone at HALO_OUTER. Painted by the area's CSS (`_area_css`), not cairo.
+HALO_INNER = 0.8
+HALO_OUTER = 1.3
+HALO_ALPHA = 0.55
 MARQUEE_PAUSE = 1.1  # seconds a name too long for its slice rests at each end
 MARQUEE_SPEED = 2.2  # how fast it scrolls, in text heights per second
+IMAGE_SIZE = 0.13  # app icon size, of the ring radius
+IMAGE_POP = 0.025  # ...grown by this much on the selected slice
 IMAGE_LOOKUP_PX = 128  # app icons are looked up once at this size (× the display scale) and scaled to fit
 LEGEND_TEXT = 0.056  # legend text size, of the ring radius
 LEGEND_MARGIN = 0.04  # legend distance from the corner of the drawing area, of the ring radius
@@ -158,6 +166,7 @@ class RadialMenu(Overlay):
         self._marquee_since = 0.0  # when the selection last moved: its name scrolls from there
         self._marquee_running = False  # the selected slice's name is scrolling (keeps frames coming)
         self._images: dict[str, Gdk.Paintable | None] = {}
+        self._image_surfaces: dict[str, cairo.ImageSurface] = {}  # icons rendered once, at their popped size
         self._legend: list[tuple[str, str]] = []  # (button, what it does) for the corner panel
         self._battery: tuple[int, bool] | None = None  # (percent, charging) for the bottom-left panel
         self._hold: _Hold | None = None
@@ -252,11 +261,23 @@ class RadialMenu(Overlay):
         return busy or self._hold is not None  # the hold ring fills frame by frame
 
     def _content_size(self, monitor_width: int, monitor_height: int) -> tuple[float, float]:
-        self._radius = DIAMETER * min(monitor_width, monitor_height) / 2
+        radius = DIAMETER * min(monitor_width, monitor_height) / 2
+        if radius != self._radius:
+            self._image_surfaces.clear()
+        self._radius = radius
         # Room for the selection pop, badges, group arcs and their labels beside the donut.
         reach = GROUP_ARC_RADIUS + GROUP_ARC_WIDTH + GROUP_LABEL_GAP + GROUP_LABEL_MAX_WIDTH + 0.05
         side = self._radius * 2 * reach
         return side, side
+
+    def _area_css(self, selector: str) -> str:
+        # The halo is the biggest fill by far: in cairo it took half of every frame on a HiDPI screen.
+        r = self._radius
+        bg = self.theme.background
+        return (
+            f"{selector} {{ background-image: radial-gradient(circle {r * HALO_OUTER:.1f}px at center, "
+            f"{css_rgba(bg, HALO_ALPHA)} {r * HALO_INNER:.1f}px, {css_rgba(bg, 0)} {r * HALO_OUTER:.1f}px); }}\n"
+        )
 
     # -- drawing -------------------------------------------------------------------------------
 
@@ -277,14 +298,6 @@ class RadialMenu(Overlay):
         )
         now = GLib.get_monotonic_time() / 1_000_000
         breath = 0.5 - 0.5 * math.cos(TAU * now / PULSE_PERIOD)
-
-        # Soft halo under the donut to lift it off whatever is behind.
-        halo = cairo.RadialGradient(0, 0, radius * 0.8, 0, 0, radius * 1.3)
-        halo.add_color_stop_rgba(0, *theme.background, 0.55)
-        halo.add_color_stop_rgba(1, *theme.background, 0.0)
-        cr.set_source(halo)
-        cr.arc(0, 0, radius * 1.3, 0, TAU)
-        cr.fill()
 
         count = len(self._items)
         for group in self._groups:
@@ -409,7 +422,7 @@ class RadialMenu(Overlay):
 
         # On top: the app's icon, or the glyph (whose box carries extra line spacing: tighten it).
         image = self._image(item.image) if item.image else None
-        image_size = ring.outer * (0.13 + 0.025 * pop)
+        image_size = ring.outer * (IMAGE_SIZE + IMAGE_POP * pop)
         glyph = None
         if image is None and item.icon:
             glyph = make_layout(context, theme, item.icon, ring.outer * (0.15 + 0.025 * pop))
@@ -444,7 +457,8 @@ class RadialMenu(Overlay):
         heights = [layout_size(layout)[1] for layout, _rgb, _alpha, _box in shown]
         y -= (head + sum(heights)) / 2
         if image is not None:
-            _draw_paintable(cr, image, x - image_size / 2, y, image_size)
+            full = ring.outer * (IMAGE_SIZE + IMAGE_POP)
+            self._draw_image(cr, item.image, image, full, x - image_size / 2, y, image_size)
         elif glyph is not None:
             draw_layout(cr, glyph, x, y + head / 2, mix(tint, theme.foreground, 0.15 * pop))
         y += head
@@ -468,6 +482,26 @@ class RadialMenu(Overlay):
         if image not in self._images:
             self._images[image] = lookup_icon(image, IMAGE_LOOKUP_PX, self._area.get_scale_factor())
         return self._images[image]
+
+    def _draw_image(
+        self, cr: cairo.Context, name: str, image: Gdk.Paintable, full: float, x: float, y: float, size: float
+    ) -> None:
+        """Draw an app icon `size` px wide. Rendering a paintable costs about as much as a whole slice, so
+        each icon is rendered once at its largest (`full`, the popped size) and only scaled down after."""
+        surface = self._image_surfaces.get(name)
+        if surface is None:
+            scale = self._area.get_scale_factor() if self._area is not None else 1
+            px = math.ceil(full * scale)
+            surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, px, px)
+            surface.set_device_scale(scale, scale)
+            _draw_paintable(cairo.Context(surface), image, 0, 0, full)
+            self._image_surfaces[name] = surface
+        cr.save()
+        cr.translate(x, y)
+        cr.scale(size / full, size / full)
+        cr.set_source_surface(surface, 0, 0)
+        cr.paint()
+        cr.restore()
 
     def _corner_point(
         self, ring: _Ring, index: int, count: int, inset: float, clockwise: bool
@@ -755,6 +789,16 @@ class RadialMenu(Overlay):
         cr.set_source_rgba(*theme.muted, 0.3)
         cr.stroke()
         draw_layout(cr, text, x + panel_w / 2, y + panel_h / 2, theme.foreground, 0.85)
+
+
+def draw_halo(cr: cairo.Context, theme: Theme, radius: float) -> None:
+    """The CSS halo in cairo, centred on the origin, for offscreen pictures (`tools/screenshots.py`)."""
+    halo = cairo.RadialGradient(0, 0, radius * HALO_INNER, 0, 0, radius * HALO_OUTER)
+    halo.add_color_stop_rgba(0, *theme.background, HALO_ALPHA)
+    halo.add_color_stop_rgba(1, *theme.background, 0.0)
+    cr.set_source(halo)
+    cr.arc(0, 0, radius * HALO_OUTER, 0, TAU)
+    cr.fill()
 
 
 def _rgb(color: tuple[int, int, int]) -> RGB:

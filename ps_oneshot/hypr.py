@@ -188,6 +188,28 @@ class Hyprland:
             return False
         return True
 
+    def no_layer_animation(self, namespace: str) -> bool:
+        """Have layer surfaces named `namespace` appear and go without the compositor's layer animation
+        (Omarchy fades layers in over a few hundred ms). Hyprland forgets the rule on a config reload."""
+        pattern = f"^{namespace}$"
+        if self.lua:
+            payloads = [f"eval hl.layer_rule({{ match = {{ namespace = {_lua_quote(pattern)} }}, "
+                        'no_anim = true, animation = "none" })']
+        else:  # the rule syntax of Hyprland 0.53+, then the older one
+            payloads = [
+                f"keyword layerrule no_anim on, match:namespace {pattern}",
+                f"keyword layerrule noanim, {pattern}",
+            ]
+        for payload in payloads:
+            try:
+                if self.request(payload).strip() == "ok":
+                    return True
+            except OSError as error:
+                log.warning("%s failed: %s", payload, error)
+                return False
+        log.warning("cannot turn off the layer animation for %s", namespace)
+        return False
+
     def reload(self) -> bool:
         """Re-read the config: every monitor goes back to its configured rule."""
         try:

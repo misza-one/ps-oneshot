@@ -198,6 +198,7 @@ class Overlay:
             f"window.{NAMESPACE}-{self._name} {{ background: transparent; }}\n"
             f".{NAMESPACE}-{self._name}-backdrop {{ background-image: radial-gradient("
             f"circle farthest-corner at center, {css_rgba(bg, centre)}, {css_rgba(bg, edge)}); }}\n"
+            + self._area_css(f".{NAMESPACE}-{self._name}-area")
         )
         if not was_visible:
             self.open_progress = 0.0
@@ -230,6 +231,7 @@ class Overlay:
         backdrop = Gtk.Box(hexpand=True, vexpand=True)
         backdrop.add_css_class(f"{NAMESPACE}-{self._name}-backdrop")
         area = Gtk.DrawingArea(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        area.add_css_class(f"{NAMESPACE}-{self._name}-area")
         area.set_draw_func(self._on_draw)
         content = Gtk.Overlay()
         content.set_child(backdrop)
@@ -280,6 +282,11 @@ class Overlay:
 
     def _draw(self, cr: cairo.Context, width: int, height: int) -> None:
         raise NotImplementedError
+
+    def _area_css(self, selector: str) -> str:
+        """CSS for the drawing area itself, set up after `_content_size`: large soft fills belong here,
+        where the GPU paints them, rather than in `_draw`, which cairo repaints on the CPU every frame."""
+        return ""
 
     def _animate(self, dt: float) -> bool:
         """Advance subclass animations by `dt` seconds; return True while still animating."""

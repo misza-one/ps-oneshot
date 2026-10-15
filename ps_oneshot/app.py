@@ -36,6 +36,7 @@ from .pad import Pad  # noqa: E402
 from .sources import Choice, LevelControl, MicMuteWatcher, next_stop, read_number  # noqa: E402
 from .terminals import FootFollower  # noqa: E402
 from .ui.cheatsheet import CheatSheet  # noqa: E402
+from .ui.overlay import NAMESPACE as OVERLAY_NAMESPACE  # noqa: E402
 from .ui.radial import RadialMenu  # noqa: E402
 from .ui.theme import load_theme  # noqa: E402
 
@@ -168,6 +169,7 @@ class App:
 
     def run(self) -> None:
         self.monitor = self.hypr.focused_monitor()
+        self.hypr.no_layer_animation(OVERLAY_NAMESPACE)  # overlays run their own, much quicker, open animation
         self.couch.recover()
         self.menu_layers.update(ns for ns in self.hypr.layer_namespaces() if self._menu_re.search(ns))
         window_class, self.window_title, self.window = self.hypr.active_window()
@@ -870,6 +872,8 @@ class App:
             self.menu_layers[data] -= 1
             if not self.menu_layers[data]:
                 del self.menu_layers[data]
+        elif event == "configreloaded":
+            self.hypr.no_layer_animation(OVERLAY_NAMESPACE)
         elif event == "focusedmon":
             self.monitor = data.split(",", 1)[0]
         elif event == "activewindowv2":

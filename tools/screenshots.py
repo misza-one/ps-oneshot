@@ -24,7 +24,7 @@ from ps_oneshot.herd import Agent  # noqa: E402
 from ps_oneshot.labels import cheatsheet_sections  # noqa: E402
 from ps_oneshot.menus import ICON_ADD, INLINE_COLOR, agent_slices  # noqa: E402
 from ps_oneshot.ui.cheatsheet import CheatSheet, _Metrics  # noqa: E402
-from ps_oneshot.ui.radial import RadialItem, RadialMenu, _Hold  # noqa: E402
+from ps_oneshot.ui.radial import RadialItem, RadialMenu, _Hold, draw_halo  # noqa: E402
 from ps_oneshot.ui.theme import Theme, load_theme  # noqa: E402
 
 SCALE = 1.5  # pixels per logical pixel: sharp in GitHub's README column
@@ -102,6 +102,10 @@ def ring(
         menu._hold = _Hold(glyph, verb, label, time.monotonic() - progress, 1.0)
     surface, cr = canvas(width, height)
     backdrop(cr, width, height, theme, menu.backdrop_alpha)
+    cr.save()
+    cr.translate(width / 2, height / 2)
+    draw_halo(cr, theme, menu._radius)  # the live overlay paints it with CSS
+    cr.restore()
     menu._draw(cr, round(width), round(height))
     return surface
 
