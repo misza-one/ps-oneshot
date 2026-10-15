@@ -133,11 +133,12 @@ On Arch (and so on Omarchy) `install.sh` installs the missing packages itself, w
 
 [VoxType](https://voxtype.io) (dictation), [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) (agent status) aren't in the Arch repositories: install them from their own pages. `--full` reminds you when they're missing, and `ps-oneshot check` lists what's there.
 
-Both ways set up three things:
+Both ways set up four things:
 
 1. a `~/.local/bin/ps-oneshot` launcher,
 2. a systemd user service (`ps-oneshot.service`) bound to `graphical-session.target`,
-3. `packaging/70-ps-oneshot.rules`, installed with sudo.
+3. `packaging/70-ps-oneshot.rules`, installed with sudo,
+4. the `uinput` kernel module, loaded now and at every boot (`/etc/modules-load.d/ps-oneshot.conf`), when the kernel doesn't have it built in.
 
 The udev rule makes the lightbar and player LEDs writable and gives the seat user access to the controller's hidraw node (mic button, adaptive triggers), its USB device node (moving it from Bluetooth to the cable) and `/dev/uinput`. Reconnect the controller once the rule is installed. Without it, everything works except the LEDs. Pass `--no-udev` to skip the rule, or `--uninstall` to remove everything.
 

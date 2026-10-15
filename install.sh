@@ -10,6 +10,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 bin="$HOME/.local/bin/ps-oneshot"
 unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 rule=/etc/udev/rules.d/70-ps-oneshot.rules
+modules=/etc/modules-load.d/ps-oneshot.conf
 
 full=0
 udev=1
@@ -27,8 +28,8 @@ if [ "$uninstall" = 1 ]; then
   systemctl --user disable --now ps-oneshot.service 2>/dev/null || true
   rm -f "$bin" "$unit_dir/ps-oneshot.service"
   systemctl --user daemon-reload
-  if [ -f "$rule" ] && ! { sudo rm -f "$rule" && sudo udevadm control --reload; }; then
-    echo "ps-oneshot removed, but the udev rule is still there: sudo rm $rule" >&2
+  if { [ -f "$rule" ] || [ -f "$modules" ]; } && ! { sudo rm -f "$rule" "$modules" && sudo udevadm control --reload; }; then
+    echo "ps-oneshot removed, but the udev rule is still there: sudo rm $rule $modules" >&2
     exit 1
   fi
   echo "ps-oneshot removed (config in ~/.config/ps-oneshot kept)"
@@ -74,7 +75,16 @@ if [ "$udev" = 1 ] && ! cmp -s "$here/packaging/70-ps-oneshot.rules" "$rule" 2>/
   sudo install -m644 "$here/packaging/70-ps-oneshot.rules" "$rule"
   sudo udevadm control --reload
   sudo udevadm trigger --action=add --subsystem-match=leds
-  sudo udevadm trigger --subsystem-match=hidraw --subsystem-match=misc --subsystem-match=usb
+  sudo udevadm trigger --subsystem-match=hidraw --subsystem-match=misc --subsystem-match=usb --subsystem-match=input
+fi
+
+# uinput is a module on most kernels and isn't loaded until something asks: until then /dev/uinput is a
+# static node the udev rule never reaches. Load it now and at every boot (built into the kernel: a no-op).
+if [ "$udev" = 1 ] && [ ! -f "$modules" ] \
+  && ! grep -qs '/uinput\.ko' "/lib/modules/$(uname -r)/modules.builtin"; then
+  echo "Loading the uinput module (needs sudo) ..."
+  echo uinput | sudo tee "$modules" >/dev/null
+  sudo modprobe uinput
 fi
 
 systemctl --user enable --now ps-oneshot.service
