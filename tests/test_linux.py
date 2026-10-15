@@ -15,12 +15,14 @@ from ps_oneshot.linux.dualsense import (
     BT_AUDIO_FRAME_SAMPLES,
     Controller,
     MicButtonReader,
+    RefusedUsb,
     build_audio_report,
     build_output_report,
     hid_resources,
     mic_pressed,
     pair_nodes,
     parse_capabilities,
+    refused_usb,
     scan_nodes,
     trigger_feedback,
     trigger_off,
@@ -156,6 +158,44 @@ class GroupingTest(unittest.TestCase):
         self.fs.event(12, f"{DS} no stick", PAD_KEYS, ())
         pairs = pair_nodes(scan_nodes(self.fs.root), "DualSense|Wireless Controller", "ps-oneshot|Steam")
         self.assertEqual([p.event for p, _ in pairs], ["event2", "event11"])
+
+
+class RefusedUsbTest(unittest.TestCase):
+    """A controller plugged in while on Bluetooth: the kernel leaves its USB HID interface without a driver."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        os.makedirs(os.path.join(self.root, "bus", "hid", "devices"))
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def hid(self, parent: str, hid_id: str, bound: bool) -> None:
+        path = os.path.join(self.root, "devices", parent, hid_id)
+        os.makedirs(path)
+        if bound:
+            driver = os.path.join(self.root, "bus", "hid", "drivers", "playstation")
+            os.makedirs(driver, exist_ok=True)
+            os.symlink(driver, os.path.join(path, "driver"))
+        os.symlink(path, os.path.join(self.root, "bus", "hid", "devices", hid_id))
+
+    def usb(self, port: str, devnum: int) -> str:
+        """A USB device on bus 3 with its HID on interface 3; returns the interface's path under devices/."""
+        device = os.path.join(self.root, "devices", "usb3", port)
+        os.makedirs(os.path.join(device, f"{port}:1.3"))
+        for name, value in (("busnum", "3"), ("devnum", str(devnum)), (f"{port}:1.3/bInterfaceNumber", "03")):
+            with open(os.path.join(device, name), "w") as f:
+                f.write(value + "\n")
+        return f"usb3/{port}/{port}:1.3"
+
+    def test_only_an_unbound_usb_dualsense_counts(self) -> None:
+        self.hid(self.usb("3-2", 13), "0003:054C:0CE6.001E", bound=False)  # refused: same pad on Bluetooth
+        self.hid(self.usb("3-3", 14), "0003:054C:0CE6.0020", bound=True)  # another pad, working on USB
+        self.hid(self.usb("3-4", 15), "0003:046D:0AB7.0019", bound=False)  # not a DualSense
+        self.hid("virtual/misc/uhid", "0005:054C:0CE6.001D", bound=False)  # Bluetooth, not USB
+        expected = [RefusedUsb("0003:054C:0CE6.001E", "/dev/bus/usb/003/013", 3)]
+        self.assertEqual(refused_usb(self.root, "/dev"), expected)
 
 
 class LedTest(unittest.TestCase):

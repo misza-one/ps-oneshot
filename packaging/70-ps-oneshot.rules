@@ -10,5 +10,9 @@ SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="*DualSense*", TAG+="uaccess"
 SUBSYSTEM=="hidraw", KERNELS=="*:054C:0CE6.*", TAG+="uaccess"
 SUBSYSTEM=="hidraw", KERNELS=="*:054C:0DF2.*", TAG+="uaccess"
 
+# The controller's USB device node: plugged in while on Bluetooth, the kernel refuses its USB side, and
+# PS One Shot re-attaches it once Bluetooth is disconnected.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="054c", ATTR{idProduct}=="0ce6|0df2", TAG+="uaccess"
+
 # Virtual keyboard/pointer (menu navigation, touchpad mouse, stick scrolling).
 KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

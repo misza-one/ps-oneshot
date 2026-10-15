@@ -31,6 +31,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
   - `launch:<desktop id>` (`apps.launch`): focus the app's most recent window (`Hyprland.focus_window`), else run `[apps] launch` (Omarchy: `uwsm-app -- {id}`). `apps.DesktopApp.owns` matches a window class to an entry by StartupWMClass, desktop id, or a Chromium web app's URL host (`chrome-<host>__-Default`).
 - **Couch mode** (`couch.CouchMode`): `enter` re-applies the monitor rule with a bigger scale (`hypr.monitor_fields` copies mode, position, colour settings; `clean_scale` rounds to a scale Hyprland accepts) and takes `[couch] bar_hide` widgets out of `bar.layout` in `~/.config/omarchy/shell.json` (written byte-compatible: indent 2, key order kept, then `omarchy-shell shell reloadConfig`). `exit` puts them back at their old indexes and reloads the Hyprland config. `[couch] enter`/`exit` actions run after the change. State is `couch` = `{instance, scales}` (on only while a monitor still shows that scale) and `couch_bar` = the taken widgets, put back by `recover()` at startup if a session ended without us.
 - **Stick buttons on demand:** a stick in scroll/pointer mode acts as `lstick_*`/`rstick_*` buttons while a held modifier's layer binds them (`App._sync_stick_buttons` → `Pad.force_stick_buttons`).
+- **Plugged in while on Bluetooth** (`App._switch_to_cable`, on every scan): `hid-playstation` refuses the USB HID interface as a duplicate MAC, so the controller stays on Bluetooth and its USB sound card stays silent. With exactly one Bluetooth pad and not paused, it runs `bluetoothctl disconnect <Controller.uniq>`, then, once that pad is gone, `dualsense.reattach_usb` (usbfs disconnect + connect on the interface found by `dualsense.refused_usb`), and the kernel takes the controller over USB. Done when a USB pad with the same `uniq` connects; after `CABLE_SWITCH_S`, or when it can't tell which pad, a notification says how to do it by hand. Each refused HID id is tried once (`_cable_tried`).
 - **Foot follows its config** (`terminals.FootFollower`, `[foot] follow`): a Gio monitor on the foot config directory sees `foot.ini`'s font size change and sends every open foot window the difference as Ctrl + KP_Add/KP_Subtract via `Hyprland.send_key` (`hl.dsp.send_key_state` with a `window`, down then up 15 ms later; keysym names, so layout-independent, and no focus change).
 - **Context sources**
   - `hypr.EventStream` (socket2): active window and layers, which drive menu mode, game auto-pause (`[game]`) and agent-window detection.
@@ -67,7 +68,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 ## Development Commands
 
 ```sh
-python -m unittest discover -s tests                   # full suite: 96 tests, well under a second
+python -m unittest discover -s tests                   # full suite: 97 tests, well under a second
 python -m unittest discover -s tests -k vibration      # by name pattern
 python -m unittest tests.test_core.ConfigTest          # module/class/method (works without tests/__init__.py)
 ruff check --select F,E9 ps_oneshot tests tools        # lint used in practice; pyproject has no ruff config
@@ -155,8 +156,8 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 - **The installed service runs from the checkout:** `~/.local/bin/ps-oneshot` is `PYTHONPATH=<repo> python3 -m ps_oneshot`, so edits go live on `systemctl --user restart ps-oneshot`.
   - Before restarting, run the tests, the lint and `python3 -m ps_oneshot check`.
   - After restarting, confirm `connected …` and `ps-oneshot running` in the journal with no warnings.
-- **Optional desktop tools:** `pactl`, `wpctl`, `pw-play`, `notify-send`, `voxtype`, `omarchy-*` and `omarchy-shell` (Omaherd status). Every call to them must tolerate their absence.
-- **Permissions:** `packaging/70-ps-oneshot.rules` grants uaccess on the DualSense input/hidraw nodes and `/dev/uinput`, and makes the LEDs writable. Installing it needs sudo; if you can't sudo, hand the user the command.
+- **Optional desktop tools:** `pactl`, `wpctl`, `pw-play`, `notify-send`, `bluetoothctl`, `voxtype`, `omarchy-*` and `omarchy-shell` (Omaherd status). Every call to them must tolerate their absence.
+- **Permissions:** `packaging/70-ps-oneshot.rules` grants uaccess on the DualSense input/hidraw nodes, its USB device node (`reattach_usb`) and `/dev/uinput`, and makes the LEDs writable. Installing it needs sudo; if you can't sudo, hand the user the command.
 - **Paths:**
   - config: `~/.config/ps-oneshot/config.toml`
   - state: `~/.local/state/ps-oneshot/state.json`

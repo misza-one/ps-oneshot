@@ -46,6 +46,7 @@ SHOT_WAIT_S = 20.0  # a shot waits this long for its transcription before giving
 SHOT_POLL_MS = 40  # how often a shot checks whether VoxType has finished typing
 SHOT_SETTLE_MS = 120  # pause between the last typed character and Enter
 SHOT_KICK_MS = 160  # how long the trigger itself buzzes after a shot
+CABLE_SWITCH_S = 15.0  # moving a controller from Bluetooth onto its cable gives up after this long
 KEY_ENTER = KEY_NAMES["enter"]
 KEY_BACKSPACE = KEY_NAMES["backspace"]
 VirtualT = TypeVar("VirtualT", VirtualKeyboard, VirtualPointer)
@@ -66,6 +67,16 @@ class TriggerPress:
     binding: Binding
     full_fired: bool = False
     started: float = field(default_factory=time.monotonic)
+
+
+@dataclass
+class CableSwitch:
+    """A controller on its way from Bluetooth onto the cable it was plugged into (App._switch_to_cable)."""
+
+    usb: dualsense.RefusedUsb
+    mac: str
+    deadline: float
+    reattached: bool = False
 
 
 class App:
@@ -135,6 +146,8 @@ class App:
         self._jump: tuple[str, float] | None = None
         self._light_timer = 0
         self._nodes: set[str] = set()
+        self._cable: CableSwitch | None = None
+        self._cable_tried: set[str] = set()  # refused USB interfaces already handled, so a failure doesn't loop
         self._menu_re = re.compile(cfg.get("menu", "namespaces"))
         self._game_class = re.compile(cfg.get("game", "pause_classes"))
         self._game_title = re.compile(cfg.get("game", "pause_titles"))
@@ -206,6 +219,7 @@ class App:
     # devices -------------------------------------------------------------------
 
     def _scan(self) -> bool:
+        self._switch_to_cable()
         nodes = set(list_event_nodes())
         if nodes == self._nodes:
             return True
@@ -237,6 +251,54 @@ class App:
         # A controller that couldn't be opened yet (udev still granting access) is retried on the next scan.
         self._nodes = nodes if len(self.pads) >= len(devices_seen) else set()
         return True
+
+    def _switch_to_cable(self) -> None:
+        """Plugged in while on Bluetooth, a controller stays on Bluetooth: the kernel refuses its USB side as a
+        duplicate, so the microphone and speaker on the cable stay silent. Disconnect Bluetooth, then have the
+        kernel take the refused USB interface again, and the controller runs on the cable. Every scan."""
+        switch = self._cable
+        if switch is None:
+            self._start_cable_switch()
+            return
+        on_cable = [p for p in self.pads.values() if p.controller.uniq == switch.mac and not p.controller.bluetooth]
+        if on_cable:
+            log.info("%s now on the cable", on_cable[0].name)
+            self._cable = None
+        elif time.monotonic() > switch.deadline:
+            log.warning("could not move the controller from Bluetooth to the cable")
+            self._cable = None
+            self._cable_hint()
+        elif not switch.reattached and all(p.controller.uniq != switch.mac for p in self.pads.values()):
+            switch.reattached = True  # Bluetooth is gone, so the kernel can take the USB side now
+            try:
+                dualsense.reattach_usb(switch.usb)
+            except OSError as error:
+                log.warning("cannot re-attach %s: %s; install %s", switch.usb.usb_node, error, dualsense.UDEV_RULE)
+            self._nodes = set()  # look for it on the next scan
+
+    def _start_cable_switch(self) -> None:
+        bluetooth = [p for p in self.pads.values() if p.controller.bluetooth]
+        if not bluetooth or self.paused:  # in game mode the controller is left alone
+            return
+        refused = [usb for usb in dualsense.refused_usb() if usb.hid_id not in self._cable_tried]
+        if not refused:
+            return
+        self._cable_tried.add(refused[0].hid_id)
+        pad = bluetooth[0]
+        if len(bluetooth) > 1 or not pad.controller.uniq or not shutil.which("bluetoothctl"):
+            self._cable_hint()  # can't tell which controller was plugged in, or can't drop its Bluetooth
+            return
+        log.info("%s plugged in while on Bluetooth: moving it to the cable", pad.name)
+        spawn(["notify-send", "-a", APP_NAME, "-t", "2500", "Controller plugged in: moving it to the cable"])
+        spawn(["bluetoothctl", "disconnect", pad.controller.uniq])
+        self._cable = CableSwitch(refused[0], pad.controller.uniq, time.monotonic() + CABLE_SWITCH_S)
+
+    def _cable_hint(self) -> None:
+        spawn([
+            "notify-send", "-a", APP_NAME, "-t", "8000",
+            "Controller plugged in but still on Bluetooth, where its microphone doesn't work. "
+            "Disconnect it from Bluetooth, then plug the cable in again.",
+        ])
 
     def _on_lost(self, pad: Pad) -> None:
         path = pad.controller.gamepad.path

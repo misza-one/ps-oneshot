@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import fcntl
 import glob
 import logging
 import os
 import re
+import struct
 import time
 import zlib
 from dataclasses import dataclass, field
 
-from .evdev import ABS_MT_POSITION_X, ABS_X, BTN_LEFT, BTN_SOUTH, EvdevDevice
+from .evdev import _IO, _IOWR, ABS_MT_POSITION_X, ABS_X, BTN_LEFT, BTN_SOUTH, EvdevDevice
 
 log = logging.getLogger(__name__)
 
@@ -177,6 +179,7 @@ class Controller:
     lightbar: str | None = None
     player_leds: list[str] = field(default_factory=list)
     battery: str | None = None
+    uniq: str = ""  # the controller's MAC address, over USB and Bluetooth alike
     _written: dict[str, str] = field(default_factory=dict, repr=False)
     _max_brightness: dict[str, int] = field(default_factory=dict, repr=False)
     _hidraw_fd: int = field(default=-1, repr=False)
@@ -508,9 +511,58 @@ def discover(match: str, ignore: str, sysfs_root: str | None = None) -> list[Con
                 lightbar=res.lightbar,
                 player_leds=res.player_leds,
                 battery=res.battery,
+                uniq=pad.uniq,
             )
         )
     return controllers
+
+
+# Plugged in while connected over Bluetooth, a DualSense stays on Bluetooth: hid-playstation refuses the
+# USB HID interface as a duplicate of the same MAC, and the USB sound card that does appear stays silent.
+_SONY_USB_HID = re.compile(r"^0003:054C:(0CE6|0DF2)\.[0-9A-F]{4}$", re.IGNORECASE)
+_USBDEVFS_IOCTL_ARGS = "iiP"  # struct usbdevfs_ioctl: interface, ioctl code, data
+_USBDEVFS_IOCTL = _IOWR("U", 18, struct.calcsize(_USBDEVFS_IOCTL_ARGS))
+_USBDEVFS_DISCONNECT = _IO("U", 22)
+_USBDEVFS_CONNECT = _IO("U", 23)
+
+
+@dataclass(frozen=True)
+class RefusedUsb:
+    """A DualSense's USB HID interface that no driver took (the kernel refuses it while the same controller
+    is on Bluetooth)."""
+
+    hid_id: str
+    usb_node: str  # /dev/bus/usb/BBB/DDD
+    interface: int
+
+
+def refused_usb(sysfs_root: str | None = None, dev_root: str | None = None) -> list[RefusedUsb]:
+    root = os.path.join(sysfs_root or SYSFS_ROOT, "bus", "hid", "devices")
+    refused = []
+    for link in sorted(glob.glob(os.path.join(root, "0003:*"))):
+        hid_id = os.path.basename(link)
+        if not _SONY_USB_HID.match(hid_id) or os.path.exists(os.path.join(link, "driver")):
+            continue
+        interface = os.path.dirname(os.path.realpath(link))
+        usb = os.path.dirname(interface)
+        bus, dev = _read_text(os.path.join(usb, "busnum")), _read_text(os.path.join(usb, "devnum"))
+        number = _read_text(os.path.join(interface, "bInterfaceNumber"))
+        if not (bus and dev and number):
+            continue
+        node = os.path.join(dev_root or DEV_ROOT, "bus", "usb", f"{int(bus):03d}", f"{int(dev):03d}")
+        refused.append(RefusedUsb(hid_id, node, int(number, 16)))
+    return refused
+
+
+def reattach_usb(device: RefusedUsb) -> None:
+    """Have the kernel probe the USB HID interface again (usbfs disconnect + connect, as libusb's detach and
+    attach do; needs write access to the USB node). Once Bluetooth is gone, hid-playstation takes it."""
+    fd = os.open(device.usb_node, os.O_RDWR | os.O_CLOEXEC)
+    try:
+        for code in (_USBDEVFS_DISCONNECT, _USBDEVFS_CONNECT):
+            fcntl.ioctl(fd, _USBDEVFS_IOCTL, struct.pack(_USBDEVFS_IOCTL_ARGS, device.interface, code, 0))
+    finally:
+        os.close(fd)
 
 
 _MIC_BIT = 0x04

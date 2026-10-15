@@ -72,6 +72,7 @@ L3 opens your favorites, R3 opens agents, holding the mic button opens voice. Pi
 - **Theme and background (Omarchy, hold Create).** Create + ☰ opens Omarchy's theme menu, Create + □ its background switcher (the current theme's wallpapers), Create + D-pad → steps to the next background. Press the second button right away; a short Create alone is still the cheat sheet.
 - **Game mode.** Hold PS to pause everything; Steam games pause the controller automatically. While paused, it leaves the LEDs and triggers alone and releases the touchpad.
 - **Mic button.** A tap mutes your microphone, a hold opens the voice radial. The button's LED and the controller's own microphone follow the system microphone (lit and cut off = muted), whatever muted it. The kernel flips the controller mic's hardware mute on every press, holds included; PS One Shot puts it back, so dictating into the controller (wired) keeps working. The button is read via hidraw, because the kernel doesn't report it as an input event.
+- **Plugging in moves the controller to the cable.** Plugged in while it's on Bluetooth, the controller would stay on Bluetooth, and the microphone and speaker that appear on the cable would stay silent. PS One Shot disconnects Bluetooth and the controller comes back on the cable a few seconds later, microphone and all. In game mode it leaves the controller alone.
 - **Cheat sheet.** Press Create to see every binding, the sticks and touchpad, and what's inside each radial menu; ○ or Create closes it. Nothing is cut short: when it's taller than the screen, either stick or D-pad ↑/↓ scrolls it, and a scrollbar shows where you are.
 - **Battery.** Every open radial shows the charge in its bottom-left corner, in the 10 % steps the controller reports. Notifications at 20 % and 10 %, plus an orange lightbar blink when the battery is low.
 
@@ -112,7 +113,7 @@ Requirements:
 - Python ≥ 3.11 with PyGObject, GTK 4 and gtk4-layer-shell,
 - a [Nerd Font](https://www.nerdfonts.com) for the menu icons (Omarchy ships one; without it the menus show text only).
 
-Optional: [VoxType](https://voxtype.io) for dictation, [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) for agent status, PipeWire (`pw-play`) for sound effects, and libopus (`opus` on Arch) to play them on the controller over Bluetooth.
+Optional: [VoxType](https://voxtype.io) for dictation, [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) for agent status, PipeWire (`pw-play`) for sound effects, libopus (`opus` on Arch) to play them on the controller over Bluetooth, and `bluetoothctl` (BlueZ) to move a controller from Bluetooth to its cable when you plug it in.
 
 On Arch:
 
@@ -128,7 +129,7 @@ git clone https://github.com/misza-one/ps-oneshot && cd ps-oneshot
 2. a systemd user service (`ps-oneshot.service`) bound to `graphical-session.target`,
 3. `packaging/70-ps-oneshot.rules`, installed with sudo.
 
-The udev rule makes the lightbar and player LEDs writable and gives the seat user access to the controller's hidraw node (mic button, adaptive triggers) and `/dev/uinput`. Reconnect the controller once the rule is installed. Without it, everything works except the LEDs. Pass `--no-udev` to skip the rule, or `--uninstall` to remove everything.
+The udev rule makes the lightbar and player LEDs writable and gives the seat user access to the controller's hidraw node (mic button, adaptive triggers), its USB device node (moving it from Bluetooth to the cable) and `/dev/uinput`. Reconnect the controller once the rule is installed. Without it, everything works except the LEDs. Pass `--no-udev` to skip the rule, or `--uninstall` to remove everything.
 
 ```sh
 ps-oneshot check      # config, Hyprland IPC, uinput, controller, LED permissions
@@ -213,6 +214,7 @@ This isn't a native VoxType feature, so keep a few things in mind:
 
 ## Known issues
 
+- **The controller's microphone only works on the cable.** Over Bluetooth the controller can send its microphone, but inside the same packets that carry its buttons, and the kernel driver reads every one of them as buttons: sticks and buttons would jump at random for every program. So PS One Shot doesn't use it there. Plug the cable in, and PS One Shot moves the controller over to it (see Features).
 - **Bluetooth sound is reverse-engineered.** Over Bluetooth the controller takes Opus-encoded audio in an undocumented HID report (0x36), which PS One Shot builds itself. It needs the system's libopus and is tested on the original DualSense only. It plays the built-in sounds and 16-bit WAV files; any other file plays on your normal output instead (`[sounds] device = "controller"` keeps it silent). A controller firmware update could change the protocol.
 - **Other programs' rumble stops while the lightbar animates.** The controller ends a running rumble on any output report without its rumble-mode bit, and the kernel's lightbar updates don't carry it. PS One Shot holds its lightbar animation while its own rumble plays, but it can't see other programs' rumble. Games are fine: in game mode it leaves the lightbar alone.
 - **Thinking level is cycled blind.** Agents don't publish their current thinking level, so the controller sends the agent's "next level" key and the same power-up sound plays every time.
