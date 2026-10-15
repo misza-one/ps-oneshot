@@ -113,17 +113,27 @@ Requirements:
 - Python ≥ 3.11 with PyGObject, GTK 4 and gtk4-layer-shell,
 - a [Nerd Font](https://www.nerdfonts.com) for the menu icons (Omarchy ships one; without it the menus show text only).
 
-Optional: [VoxType](https://voxtype.io) for dictation, [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) for agent status, PipeWire (`pw-play`) for sound effects, libopus (`opus` on Arch) to play them on the controller over Bluetooth, and `bluetoothctl` (BlueZ) to move a controller from Bluetooth to its cable when you plug it in.
-
-On Arch:
-
 ```sh
-sudo pacman -S python-gobject gtk4 gtk4-layer-shell
 git clone https://github.com/misza-one/ps-oneshot && cd ps-oneshot
-./install.sh
+./install.sh          # the minimum
+./install.sh --full   # or everything: the minimum plus the optional tools
 ```
 
-`install.sh` sets up three things:
+On Arch (and so on Omarchy) `install.sh` installs the missing packages itself, with pacman; elsewhere install PyGObject, GTK 4 and gtk4-layer-shell first. The minimum is all PS One Shot needs to run. Each optional tool brings one feature, and `--full` adds them all:
+
+| Tool | Arch package | What it brings |
+|---|---|---|
+| `pw-play` | pipewire-audio | sound effects |
+| `pactl` | libpulse | the audio devices ring and the mic mute LED |
+| `notify-send` | libnotify | notifications |
+| `bluetoothctl` | bluez-utils | moving a plugged-in controller from Bluetooth to the cable |
+| libopus | opus | sound effects on the controller over Bluetooth |
+| `wpctl`, `playerctl`, `brightnessctl` | wireplumber, playerctl, brightnessctl | volume, mic mute, media and brightness keys without Omarchy (Omarchy has its own commands) |
+| a Nerd Font | ttf-nerd-fonts-symbols | the menu icons without Omarchy (Omarchy ships one) |
+
+[VoxType](https://voxtype.io) (dictation), [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) (agent status) aren't in the Arch repositories: install them from their own pages. `--full` reminds you when they're missing, and `ps-oneshot check` lists what's there.
+
+Both ways set up three things:
 
 1. a `~/.local/bin/ps-oneshot` launcher,
 2. a systemd user service (`ps-oneshot.service`) bound to `graphical-session.target`,
@@ -132,7 +142,7 @@ git clone https://github.com/misza-one/ps-oneshot && cd ps-oneshot
 The udev rule makes the lightbar and player LEDs writable and gives the seat user access to the controller's hidraw node (mic button, adaptive triggers), its USB device node (moving it from Bluetooth to the cable) and `/dev/uinput`. Reconnect the controller once the rule is installed. Without it, everything works except the LEDs. Pass `--no-udev` to skip the rule, or `--uninstall` to remove everything.
 
 ```sh
-ps-oneshot check      # config, Hyprland IPC, uinput, controller, LED permissions
+ps-oneshot check      # config, Hyprland IPC, uinput, optional tools, controller, LED permissions
 ps-oneshot devices    # what was found and what is accessible
 ps-oneshot -v         # run in the foreground with debug logs
 journalctl --user -u ps-oneshot -f
@@ -240,6 +250,24 @@ python -m tools.screenshots      # redraw the pictures in docs/images (run it in
 ```
 
 `tools/fake_dualsense.py` creates a virtual DualSense through uinput: a gamepad plus a touchpad, and it accepts rumble. You can drive it from a script to test without hardware. `tools/screenshots.py` draws the overlays offscreen with made-up apps and agents. [AGENTS.md](AGENTS.md) describes the architecture, conventions and how to test safely next to a real controller.
+
+## Credits
+
+PS One Shot stands on these projects:
+
+- [Hyprland](https://hypr.land), the compositor it drives,
+- [Omarchy](https://omarchy.org), whose menus, themes and commands the Omarchy preset uses,
+- [VoxType](https://voxtype.io) for dictation,
+- [Omaherd](https://github.com/salemsayed/omaherd) and [herdr](https://github.com/herdrdev/herdr) for agent status and agent windows,
+- [GTK 4](https://www.gtk.org), [gtk4-layer-shell](https://github.com/wmww/gtk4-layer-shell) and [PyGObject](https://pygobject.gnome.org) for the overlays,
+- [PipeWire](https://pipewire.org), [Opus](https://opus-codec.org) and [BlueZ](https://github.com/bluez/bluez) for sound and Bluetooth,
+- [Nerd Fonts](https://www.nerdfonts.com) for the icons.
+
+What the controller doesn't document comes from other people's work:
+
+- the Linux kernel's [`hid-playstation`](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c) driver: the output report layout and its checksum,
+- [LinuxAudio4Dualsense5](https://github.com/GeorgLegato/LinuxAudio4Dualsense5): the Bluetooth speaker protocol,
+- [dualsense-neo](https://github.com/forgerpl/dualsense-neo): its notes on the Bluetooth microphone.
 
 ## License
 

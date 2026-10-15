@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import re
+import shutil
 import sys
 
 from . import __version__
 from .preload import ensure_layer_shell_preload
+
+# Optional tools and what each brings (README "Install"); everything else works without them.
+OPTIONAL_TOOLS = (
+    ("pw-play", "sound effects"),
+    ("pactl", "audio devices ring, mic mute LED"),
+    ("notify-send", "notifications"),
+    ("bluetoothctl", "moving a plugged-in controller from Bluetooth to the cable"),
+    ("voxtype", "dictation"),
+)
+# Called by plain Hyprland's default bindings: listed when the configuration uses them.
+CONFIG_TOOLS = (("wpctl", "volume, mic mute"), ("playerctl", "media keys"), ("brightnessctl", "screen brightness"))
 
 
 def _devices(cfg) -> int:
@@ -56,7 +70,21 @@ def _check(cfg) -> int:
     print(f"uinput    {'ok' if uinput else 'NO access to /dev/uinput (menus/touchpad need it)'}")
     ok &= uinput
     print(f"herd      {'on' if HerdProvider.available(cfg.section('herd')) else 'off (Omaherd not found)'}")
+    _optional_tools(cfg)
     return (0 if ok else 1) | _devices(cfg)
+
+
+def _optional_tools(cfg) -> None:
+    from .linux import opus
+
+    used = json.dumps(cfg.raw)
+    tools = [*OPTIONAL_TOOLS, *((tool, why) for tool, why in CONFIG_TOOLS if re.search(rf"\b{tool}\b", used))]
+    rows = [(shutil.which(tool) is not None, tool, why) for tool, why in tools]
+    rows.append((opus.available(), "libopus", "sound effects on the controller over Bluetooth"))
+    for index, (found, tool, why) in enumerate(rows):
+        print(f"{'optional' if index == 0 else '':<10}{'ok' if found else 'MISSING':<9}{tool:<15}{why}")
+    if not all(found for found, _tool, _why in rows):
+        print(f"{'':<10}./install.sh --full installs what's missing (Arch)")
 
 
 def main(argv: list[str] | None = None) -> int:

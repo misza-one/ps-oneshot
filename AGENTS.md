@@ -78,7 +78,7 @@ python3 -m ps_oneshot -v -c /tmp/x/config.toml         # foreground run with deb
 python -m ps_oneshot.ui.demo                           # overlay preview with hardcoded data (needs Wayland)
 python -m tools.fake_dualsense --settle 2 tap:BTN_THUMBL sleep:1 stick:ABS_X:255 sleep:1 tap:BTN_EAST
 python -m tools.screenshots                            # redraw docs/images offscreen (needs a desktop session)
-./install.sh [--no-udev | --uninstall]                 # launcher, user service, and the udev rule via sudo
+./install.sh [--full] [--no-udev | --uninstall]        # packages (pacman; --full adds the optional tools), launcher, user service, udev rule via sudo
 systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 ```
 
@@ -120,6 +120,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 - **New action kind:** `config.ACTION_KINDS`, its handler (`ActionRunner.run` or the `App` builtins dict), `actions.describe`, and the header comment of `base.toml`.
 - **New live radial source:** `config.SOURCES`, `menus.RadialMenus._source_slices` (usually returning `sources.Choice`), `labels.SOURCE_TEXT`, and the `base.toml` header.
 - **New persisted toggle:** a `load_state` / `save_state` key, the `App` handler, and `App._settings_choices` (the L3 → PS One Shot ring).
+- **New optional tool:** its Arch package in `install.sh` (`optional`), `__main__.OPTIONAL_TOOLS` (or `CONFIG_TOOLS` when only the default bindings call it), and the README `## Install` table.
 - **New binding field:** `config.Binding`, `_parse_binding` (allowed keys and validation), `App._press` / `_release` / `_on_trigger`, and `labels.binding_text`.
 - **New control:** `config.BUTTONS`, `pad.BUTTON_CODES` (or the hat/stick mapping), and `labels.GLYPHS` + `labels.ORDER`.
 - **User-visible behaviour change:** the binding's `desc` (cheat sheet text), README `## Features` and the `## Default layout` table. Limitations go in README `## Known issues`. If the overlays or the default bindings look different, rerun `python -m tools.screenshots`.
@@ -156,7 +157,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 - **The installed service runs from the checkout:** `~/.local/bin/ps-oneshot` is `PYTHONPATH=<repo> python3 -m ps_oneshot`, so edits go live on `systemctl --user restart ps-oneshot`.
   - Before restarting, run the tests, the lint and `python3 -m ps_oneshot check`.
   - After restarting, confirm `connected …` and `ps-oneshot running` in the journal with no warnings.
-- **Optional desktop tools:** `pactl`, `wpctl`, `pw-play`, `notify-send`, `bluetoothctl`, `voxtype`, `omarchy-*` and `omarchy-shell` (Omaherd status). Every call to them must tolerate their absence.
+- **Optional desktop tools:** `pactl`, `wpctl`, `pw-play`, `notify-send`, `bluetoothctl`, `voxtype`, `omarchy-*` and `omarchy-shell` (Omaherd status). Every call to them must tolerate their absence. `ps-oneshot check` lists which are there; `install.sh --full` installs them on Arch.
 - **Permissions:** `packaging/70-ps-oneshot.rules` grants uaccess on the DualSense input/hidraw nodes, its USB device node (`reattach_usb`) and `/dev/uinput`, and makes the LEDs writable. Installing it needs sudo; if you can't sudo, hand the user the command.
 - **Paths:**
   - config: `~/.config/ps-oneshot/config.toml`
