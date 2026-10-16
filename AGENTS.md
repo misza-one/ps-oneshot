@@ -42,7 +42,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 - **Outputs**
   - `lights.LightEngine.frame` drives the sysfs LED-class lightbar and player LEDs, plus evdev FF rumble. `App.refresh_lights` holds the LED writes while `Controller.rumbling` (they would stop our rumble, see the HID invariant) and keeps ticking until it's over.
   - Trigger effects and the mic mute (LED + the built-in mic's hardware mute, `power_save_control`) go out as hidraw output reports (`dualsense.build_output_report`). The kernel toggles that mute on every mic-button press; `App._sync_mic_mute` puts it back to the system mic state.
-  - Overlays: `ui.radial.RadialMenu` and `ui.cheatsheet.CheatSheet`.
+  - Overlays: `ui.radial.RadialMenu` and `ui.cheatsheet.CheatSheet`. They open with their own animation: Hyprland's layer animation is off for the `ps-oneshot` namespace (`Hyprland.no_layer_animation`, set at startup and again on `configreloaded`, which drops the rule).
   - Sounds: `App._play_sound`. Wired, `sounds.play` runs `pw-play` (to the controller's sound card when it has one). Over Bluetooth, `sounds.BluetoothSpeaker`: samples at 45 kHz (`dualsense.BT_AUDIO_RATE`), Opus CBR frames of 200 bytes via `linux.opus` (ctypes libopus, optional), cached per sound and volume; a worker thread sends a speaker-routing 0x31 (`build_output_report(speaker=…, keep_rumble=True)`), then one `build_audio_report` (0x36) every 512/48000 s. A newer sound cuts off the playing one. `[sounds] volume` steps at runtime with `sounds:louder|quieter` (Effects +/− in the settings ring, whose hub shows the level through `Choice.detail`).
 - **Radial menus:** `menus.RadialMenus` owns the view stack and calls back through `menus.Hooks`. Its live sources are `herd`, `audio`, `voxtype-language`, `settings` and `favorites`. Every selection change goes through `RadialMenus._sync`, which also sends `_legend` (what each button does on the selected slice) to the overlay's bottom-right panel (`RadialMenu.set_legend`). Every `_show` also sends `Hooks.battery` (`App._battery_level`: the emptiest pad's percent and charging) to the bottom-left panel (`RadialMenu.set_battery`).
 - **Favorites** (`favorites.Favorites`): slots saved as state key `favorites` (entries shaped like config items, `None` = empty), seeded from `[favorites] items` until the first edit. In an open ring, a favorites slice (`Slice.favorite` = slot index) takes:
@@ -78,7 +78,7 @@ python3 -m ps_oneshot -v -c /tmp/x/config.toml         # foreground run with deb
 python -m ps_oneshot.ui.demo                           # overlay preview with hardcoded data (needs Wayland)
 python -m tools.fake_dualsense --settle 2 tap:BTN_THUMBL sleep:1 stick:ABS_X:255 sleep:1 tap:BTN_EAST
 python -m tools.screenshots                            # redraw docs/images offscreen (needs a desktop session)
-./install.sh [--full] [--no-udev | --uninstall]        # packages (pacman; --full adds the optional tools), launcher, user service, udev rule via sudo
+./install.sh [--full] [--no-udev | --uninstall]        # packages (pacman; --full adds the optional tools), launcher, user service, udev rule and uinput module via sudo
 systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 ```
 
@@ -99,12 +99,13 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 - **GLib patterns**
   - `timeout_add` callbacks return `True` to repeat and `False` for one-shots.
   - Overlay animations run in `Overlay._animate(dt)`, which returns whether it is still busy.
+  - `_draw` is cairo on the CPU, every frame: big soft fills go in `Overlay._area_css` instead (CSS on the drawing area, painted by the GPU; the radial's halo), and app icons are rendered once per size (`RadialMenu._draw_image`).
   - Fire-and-forget commands go through `actions.spawn` (new session, reaped via `child_watch_add`).
   - Blocking `subprocess.run` is allowed only with a short `timeout` (pactl/voxtype queries use 3 s) or inside a worker thread.
 - **Wiring:** `App.__init__` builds everything and injects callbacks: the `ActionRunner` builtins dict, `Pad` callbacks and `menus.Hooks`. Feature modules never import `app`.
 - **GI imports**
   - Use `gi.require_version(...)`, then `from gi.repository import …  # noqa: E402`.
-  - `ui/__init__.py` pins Gtk 4, Gtk4LayerShell and Pango first.
+  - `ui/__init__.py` defaults `GSK_RENDERER` to `gl` (Vulkan ran the overlays at 6-11 fps on an Intel iGPU; a value in the environment still wins), then pins Gtk 4, Gtk4LayerShell and Pango.
   - Anything that shows overlays calls `preload.ensure_layer_shell_preload()` first. It re-execs with `LD_PRELOAD=libgtk4-layer-shell.so`.
 - **State**
   - Config is data (`Config.raw` plus parsed `layers`, `modifiers`, `radials`).
@@ -123,6 +124,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 - **New optional tool:** its Arch package in `install.sh` (`optional`), `__main__.OPTIONAL_TOOLS` (or `CONFIG_TOOLS` when only the default bindings call it), and the README `## Install` table.
 - **New binding field:** `config.Binding`, `_parse_binding` (allowed keys and validation), `App._press` / `_release` / `_on_trigger`, and `labels.binding_text`.
 - **New control:** `config.BUTTONS`, `pad.BUTTON_CODES` (or the hat/stick mapping), and `labels.GLYPHS` + `labels.ORDER`.
+- **A fill moved from `_draw` into `_area_css`:** draw it in `tools/screenshots.py` too, since offscreen pictures get no CSS (`radial.draw_halo`).
 - **User-visible behaviour change:** the binding's `desc` (cheat sheet text), README `## Features` and the `## Default layout` table. Limitations go in README `## Known issues`. If the overlays or the default bindings look different, rerun `python -m tools.screenshots`.
 
 ### Invariants
@@ -158,7 +160,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
   - Before restarting, run the tests, the lint and `python3 -m ps_oneshot check`.
   - After restarting, confirm `connected …` and `ps-oneshot running` in the journal with no warnings.
 - **Optional desktop tools:** `pactl`, `wpctl`, `pw-play`, `notify-send`, `bluetoothctl`, `voxtype`, `omarchy-*` and `omarchy-shell` (Omaherd status). Every call to them must tolerate their absence. `ps-oneshot check` lists which are there; `install.sh --full` installs them on Arch.
-- **Permissions:** `packaging/70-ps-oneshot.rules` grants uaccess on the DualSense input/hidraw nodes, its USB device node (`reattach_usb`) and `/dev/uinput`, and makes the LEDs writable. Installing it needs sudo; if you can't sudo, hand the user the command.
+- **Permissions:** `packaging/70-ps-oneshot.rules` grants uaccess on the DualSense input/hidraw nodes, its USB device node (`reattach_usb`) and `/dev/uinput`, and makes the LEDs writable. On most kernels `uinput` is a module nothing loads at boot, and the rule never reaches its static node, so `install.sh` also loads it and lists it in `/etc/modules-load.d/ps-oneshot.conf` (not when built in). Both need sudo; if you can't sudo, hand the user the commands.
 - **Paths:**
   - config: `~/.config/ps-oneshot/config.toml`
   - state: `~/.local/state/ps-oneshot/state.json`
