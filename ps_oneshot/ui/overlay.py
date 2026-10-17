@@ -1,4 +1,4 @@
-"""Shared plumbing for the full-screen, click-through, focus-less layer-shell overlays."""
+"""Shared plumbing for the full-screen, click-through layer-shell overlays (focus-less unless they opt in)."""
 
 from __future__ import annotations
 
@@ -140,12 +140,15 @@ def rounded_rect(cr: cairo.Context, x: float, y: float, w: float, h: float, r: f
 class Overlay:
     """One centred `Gtk.DrawingArea` over a dimmed backdrop on a full-screen OVERLAY layer surface.
 
-    The surface has keyboard mode NONE and an empty input region, so it never takes focus or clicks.
+    The surface has an empty input region, so it never takes clicks. Its keyboard mode is NONE, unless a
+    subclass sets `takes_keyboard`: then it holds the keyboard exclusively while shown, and `_on_key` gets
+    each key press and release (auto-repeats come as presses with `repeat` set).
     The dim backdrop is CSS (GPU-composited); only the centred area is painted with cairo.
     Subclasses implement `_draw`, `_content_size` and optionally `_animate` / `_on_hidden`.
     """
 
     backdrop_alpha = (0.62, 0.38)  # centre, edges
+    takes_keyboard = False
 
     def __init__(self, theme_loader: Callable[[], Theme], name: str) -> None:
         self._theme_loader = theme_loader
@@ -160,6 +163,7 @@ class Overlay:
         self._tick_id = 0
         self._open_start: float | None = None
         self._last_frame: float | None = None
+        self._keys_down: set[int] = set()
 
     @property
     def visible(self) -> bool:
@@ -170,6 +174,7 @@ class Overlay:
             return
         self._stop_ticking()
         self._on_hidden()
+        self._keys_down.clear()
         self._window.set_visible(False)
 
     def _present(self, monitor: str | None) -> None:
@@ -215,7 +220,14 @@ class Overlay:
         Gtk4LayerShell.init_for_window(window)
         Gtk4LayerShell.set_namespace(window, NAMESPACE)
         Gtk4LayerShell.set_layer(window, Gtk4LayerShell.Layer.OVERLAY)
-        Gtk4LayerShell.set_keyboard_mode(window, Gtk4LayerShell.KeyboardMode.NONE)
+        Gtk4LayerShell.set_keyboard_mode(
+            window, Gtk4LayerShell.KeyboardMode.EXCLUSIVE if self.takes_keyboard else Gtk4LayerShell.KeyboardMode.NONE
+        )
+        if self.takes_keyboard:
+            keys = Gtk.EventControllerKey()
+            keys.connect("key-pressed", self._on_key_pressed)
+            keys.connect("key-released", self._on_key_released)
+            window.add_controller(keys)
         for edge in (
             Gtk4LayerShell.Edge.TOP,
             Gtk4LayerShell.Edge.BOTTOM,
@@ -273,6 +285,20 @@ class Overlay:
             return GLib.SOURCE_CONTINUE
         self._tick_id = 0
         return GLib.SOURCE_REMOVE
+
+    def _on_key_pressed(self, _controller: Gtk.EventControllerKey, keyval: int, _code: int, _state: object) -> bool:
+        repeat = keyval in self._keys_down
+        self._keys_down.add(keyval)
+        self._on_key(Gdk.keyval_name(keyval) or "", True, repeat)
+        return True
+
+    def _on_key_released(self, _controller: Gtk.EventControllerKey, keyval: int, _code: int, _state: object) -> None:
+        if keyval in self._keys_down:  # not one still held from before we took the keyboard
+            self._keys_down.discard(keyval)
+            self._on_key(Gdk.keyval_name(keyval) or "", False, False)
+
+    def _on_key(self, name: str, down: bool, repeat: bool) -> None:
+        """A key press or release (Gdk keyval name) while the overlay holds the keyboard."""
 
     def _on_draw(self, _area: Gtk.DrawingArea, cr: cairo.Context, width: int, height: int) -> None:
         self._draw(cr, width, height)

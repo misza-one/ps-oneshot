@@ -55,6 +55,14 @@ LEGEND_MARGIN = 0.04  # legend distance from the corner of the drawing area, of 
 # The battery panel in the opposite corner: Material Design battery glyphs by tenth of charge (outline for
 # 0-9 %, 10 … 90, full), the same 10 % steps the controller reports in.
 BATTERY_ICONS = ("\U000f008e", *(chr(0xF007A + tenth) for tenth in range(9)), "\U000f0079")
+# The keyboard works the radial like the pad: Escape backs out, Enter picks, arrows and Tab step around.
+KEY_BUTTONS = {
+    "Escape": "circle", "BackSpace": "circle",
+    "Return": "cross", "KP_Enter": "cross", "space": "cross",
+    "Left": "dpad_left", "Up": "dpad_left", "ISO_Left_Tab": "dpad_left",
+    "Right": "dpad_right", "Down": "dpad_right", "Tab": "dpad_right",
+}
+REPEATING_BUTTONS = {"dpad_left", "dpad_right"}
 BATTERY_CHARGING = "\U000f0084"
 
 
@@ -153,6 +161,7 @@ class _Ring:
 
 class RadialMenu(Overlay):
     backdrop_alpha = (0.68, 0.44)
+    takes_keyboard = True
 
     def __init__(self, theme_loader: Callable[[], Theme]) -> None:
         super().__init__(theme_loader, "radial")
@@ -170,6 +179,8 @@ class RadialMenu(Overlay):
         self._legend: list[tuple[str, str]] = []  # (button, what it does) for the corner panel
         self._battery: tuple[int, bool] | None = None  # (percent, charging) for the bottom-left panel
         self._hold: _Hold | None = None
+        # (button, down) for a key mapped to a pad button (KEY_BUTTONS), set by whoever runs the menu.
+        self.on_key: Callable[[str, bool], None] | None = None
 
     def show(self, title: str, items: list[RadialItem], monitor: str | None) -> None:
         fresh = not self.visible
@@ -240,6 +251,12 @@ class RadialMenu(Overlay):
     def _on_pulse(self) -> bool:
         self._queue_draw()
         return GLib.SOURCE_CONTINUE
+
+    def _on_key(self, name: str, down: bool, repeat: bool) -> None:
+        button = KEY_BUTTONS.get(name)
+        if button is None or self.on_key is None or (repeat and button not in REPEATING_BUTTONS):
+            return
+        self.on_key(button, down)
 
     def _on_hidden(self) -> None:
         self._hold = None

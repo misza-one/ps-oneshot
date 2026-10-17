@@ -55,7 +55,7 @@ Works on any Hyprland setup. On [Omarchy](https://omarchy.org) it also uses Omar
 
 <img src="docs/images/hold.png" width="42%" align="right" alt="Holding □ on an empty slot: the centre says PIN HERE, Files, and a ring fills up in the button's colour">
 
-L3 opens your favorites, R3 opens agents, holding the mic button opens voice. Pick a slice with either stick, confirm with ✕, go back with ○. Submenus are supported, and every tick has a haptic click. A name too long for its slice scrolls through it while that slice is selected. A panel in the bottom-right corner lists what each button does on the selected slice; the bottom-left one shows the controller's battery.
+L3 opens your favorites, R3 opens agents, holding the mic button opens voice. Pick a slice with either stick, confirm with ✕, go back with ○. The keyboard works an open ring too: Escape or Backspace goes back, Enter picks, the arrows and Tab step around. Submenus are supported, and every tick has a haptic click. A name too long for its slice scrolls through it while that slice is selected. A panel in the bottom-right corner lists what each button does on the selected slice; the bottom-left one shows the controller's battery.
 
 - **Favorites** (L3) are six slots for what you open most, in fixed places so your hand learns them, next to PS One Shot › and System › (apps, window, audio, notifications, dictation, screenshot, lock). Apps show their own icons, and picking one focuses its open window instead of starting another, web apps included. You change the slots right in the ring, and it remembers them (`[favorites] items` only sets where it starts):
   - ✕ on an empty slot ("Add") picks from a list of every installed app (Omarchy's own menu, or any dmenu-style list).

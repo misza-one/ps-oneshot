@@ -26,6 +26,9 @@ REMOTE_COLORS: tuple[RGB, ...] = ((251, 146, 60), (167, 139, 250), (52, 211, 153
 INLINE_COLOR: RGB = (130, 251, 156)
 ICON_LOCAL, ICON_REMOTE = "\uf109", "\uf233"
 ICON_ADD = "\uf067"
+# The open ring holds the keyboard. What runs after it closes waits this long, so the compositor has
+# given the keyboard back to the window first: `key:` actions and pickers must not land on our surface.
+KEYBOARD_HANDBACK_MS = 60
 
 
 @dataclass
@@ -117,6 +120,7 @@ class RadialMenus:
         self.name = ""  # the open radial
         self._hold: tuple[str, int] | None = None  # (button, timer) while □/△ is held to confirm
         self._pin_app: DesktopApp | None = None  # what □ would pin: the focused window's app
+        ui.on_key = self._on_key
 
     @property
     def is_open(self) -> bool:
@@ -304,6 +308,15 @@ class RadialMenus:
             return False
         return True
 
+    def _on_key(self, button: str, down: bool) -> None:
+        """A key on the open ring, already mapped to the pad button it stands for."""
+        if not self.is_open:
+            return
+        if down:
+            self.on_button(button)
+        else:
+            self.on_release(button)
+
     def on_release(self, button: str) -> None:
         if self._hold is not None and self._hold[0] == button:
             self._cancel_hold()  # let go too early: nothing happens
@@ -350,10 +363,12 @@ class RadialMenus:
         elif chosen.favorite is not None and not chosen.action:  # an empty slot: pick from the list
             name, origin, depth, index = self.name, self.stack[-1], len(self.stack), chosen.favorite
             self.close()
-            self.favorites.pick(index, lambda: self._picked(name, origin, depth, index))
+            _after_handback(self.favorites.pick, index, lambda: self._picked(name, origin, depth, index))
         elif chosen.action:
             if not chosen.keep_open:
                 self.close()
+                _after_handback(self.hooks.run_action, chosen.action)
+                return
             self.hooks.run_action(chosen.action)
             if chosen.keep_open and self.stack:  # e.g. a toggle's ✓ flips
                 view = self.stack[-1]
@@ -458,3 +473,11 @@ class RadialMenus:
         view = self.stack[-1]
         view.selection = next((i for i, s in enumerate(view.slices) if s.favorite == index), None)
         self._show()
+
+
+def _after_handback(function: Callable[..., object], *args: object) -> None:
+    def run() -> bool:
+        function(*args)
+        return False
+
+    GLib.timeout_add(KEYBOARD_HANDBACK_MS, run)
