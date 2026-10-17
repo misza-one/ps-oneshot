@@ -208,7 +208,7 @@ class HerdProvider:
 
     def _loop(self) -> None:
         while True:
-            agents = self._poll()
+            agents = self.poll()
             GLib.idle_add(self._deliver, agents)
             if self._stop.wait(self._interval):
                 return
@@ -219,7 +219,7 @@ class HerdProvider:
         self._on_update(self.agents)
         return False
 
-    def _poll(self) -> list[Agent] | None:
+    def poll(self) -> list[Agent] | None:
         for command in (self._status, self._fallback):
             if not command or shutil.which(command[0]) is None:
                 continue
@@ -233,10 +233,19 @@ class HerdProvider:
         return None
 
     def focus(self, agent: Agent) -> None:
+        if (command := self._focus_command(agent)) is not None:
+            threading.Thread(target=self._focus_sequence, args=(command, agent), daemon=True).start()
+
+    def focus_now(self, agent: Agent) -> None:
+        """`focus`, blocking until it's done (for a one-shot process that exits right after)."""
+        if (command := self._focus_command(agent)) is not None:
+            self._focus_sequence(command, agent)
+
+    def _focus_command(self, agent: Agent) -> list[str] | None:
         if not agent.pane_id or not os.path.isfile(self._attach):
             log.info("cannot focus %s: no pane id or attach helper", agent.key)
-            return
-        command = [
+            return None
+        return [
             self._attach,
             "--host", agent.host,
             "--session", agent.session,
@@ -246,7 +255,6 @@ class HerdProvider:
             "--timeout", "3",
             "--focus",
         ]
-        threading.Thread(target=self._focus_sequence, args=(command, agent), daemon=True).start()
 
     def close(self, agent: Agent) -> None:
         """Close the agent's herdr pane, which ends the agent, then show the list without it."""
@@ -268,7 +276,7 @@ class HerdProvider:
             spawn(["notify-send", "-a", APP_NAME, "-t", "4000", f"Couldn't close {agent.project}: {reason}"])
             return
         log.info("closed %s on %s", agent.project, agent.machine)
-        GLib.idle_add(self._deliver, self._poll())  # gone from the ring now, not at the next poll
+        GLib.idle_add(self._deliver, self.poll())  # gone from the ring now, not at the next poll
 
     def _focus_sequence(self, command: list[str], agent: Agent) -> None:
         try:

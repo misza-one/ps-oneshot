@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 import math
+import os
+import tempfile
 import unittest
 
+from ps_oneshot import agentpicker, config
+from ps_oneshot.herd import Agent
 from ps_oneshot.ui.radial import GroupSpan, _row_width, group_spans, marquee_offset, slice_for_vector
+
+
+def agent(key: str, status: str = "idle", since: int = 0, host: str = "local", title: str = "") -> Agent:
+    return Agent(key=key, project="proj", kind="claude", status=status, title=title, pane_id="p", session="s",
+                 host=host, hostname="box" if host != "local" else "", since=since)
 
 
 def at(degrees: float, magnitude: float = 1.0) -> tuple[float, float]:
@@ -132,6 +141,31 @@ class GroupSpansTest(unittest.TestCase):
             group_spans(["a", "b", "a", ""]),
             [GroupSpan(0, 1, "a"), GroupSpan(1, 1, "b"), GroupSpan(2, 1, "a")],
         )
+
+
+class AgentPickerTest(unittest.TestCase):
+    def test_waiting_first_then_by_machine(self) -> None:
+        agents = [agent("w", "working", host="srv"), agent("i"), agent("d", "done", 9), agent("b", "blocked", 5)]
+        self.assertEqual([a.key for a in agentpicker.card_order(agents)], ["b", "d", "i", "w"])
+
+    def test_card_names_are_distinct_and_path_safe(self) -> None:
+        agents = [agent("a", title="π ⠏ Fix a/b"), agent("b", title="π ⠏ Fix a/b"), agent("c", host="srv")]
+        self.assertEqual(agentpicker.card_names(agents), ["proj Fix a b claude", "proj Fix a b claude 2", "proj claude box"])
+
+    def test_waited(self) -> None:
+        now = 1_000_000.0
+        self.assertEqual(agentpicker.waited(0, now), "")
+        self.assertEqual(agentpicker.waited(int((now - 45) * 1000), now), "45s")
+        self.assertEqual(agentpicker.waited(int((now - 3 * 3600 - 300) * 1000), now), "3h 5m")
+        self.assertEqual(agentpicker.waited(int((now - 2 * 3600) * 1000), now), "2h")
+
+    def test_draws_a_card(self) -> None:
+        lights = config.build(config._default("base"), "hyprland", []).section("lights")
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "card.png")
+            agentpicker.draw_card(path, agent("a", "blocked", title="A long task title " * 8), agentpicker.load_theme(), lights)
+            with open(path, "rb") as handle:
+                self.assertEqual(handle.read(8), b"\x89PNG\r\n\x1a\n")
 
 
 if __name__ == "__main__":

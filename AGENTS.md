@@ -138,7 +138,8 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 
 ## Important Files
 
-- `ps_oneshot/__main__.py`: the CLI (`run|check|devices`, `-c`, `-v`, `--version`) and its exit codes.
+- `ps_oneshot/__main__.py`: the CLI (`run|check|devices|agents`, `-c`, `-v`, `--version`) and its exit codes.
+- `ps_oneshot/agentpicker.py`: `ps-oneshot agents`, a one-shot process apart from the daemon: polls Omaherd, draws one card per agent (cairo, `CARD_W`x`CARD_H`, twice the selector's expanded card; unselected strips show the centre line), opens them through `omarchy-shell image-selector open` with a fresh `$XDG_RUNTIME_DIR/ps-oneshot/agents/<run>/` (Qt caches images by path) and focuses the pick with `HerdProvider.focus_now`.
 - `ps_oneshot/app.py`: `App`. Wiring, layers, tap/hold/chord, staged triggers, the R2 shot (`_dictation_action`, `_shot_enter`), pause/game mode, the settings ring.
 - `ps_oneshot/apps.py`: desktop entries through Gio (`installed`, `find`), window ↔ app matching, `launch`.
 - `ps_oneshot/favorites.py`: the favorites slots (`place` swaps a duplicate, `shift` moves), the picker list and its worker thread.

@@ -89,7 +89,7 @@ def _optional_tools(cfg) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ps-oneshot", description="Drive Hyprland with a DualSense controller.")
-    parser.add_argument("command", nargs="?", default="run", choices=("run", "check", "devices"))
+    parser.add_argument("command", nargs="?", default="run", choices=("run", "check", "devices", "agents"))
     parser.add_argument("-c", "--config", help="config file (default ~/.config/ps-oneshot/config.toml)")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--version", action="version", version=f"ps-oneshot {__version__}")
@@ -111,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
         return _devices(cfg)
     if args.command == "check":
         return _check(cfg)
+    if args.command == "agents":
+        from .agentpicker import run as pick_agent
+
+        return pick_agent(cfg)
 
     ensure_layer_shell_preload()
     from .app import run
