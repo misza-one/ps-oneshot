@@ -3,10 +3,16 @@ from __future__ import annotations
 import math
 import os
 import tempfile
+import threading
 import unittest
 
-from ps_oneshot import agentpicker, config
+from gi.repository import GLib
+
+from ps_oneshot import agentcards, agentpicker, config
+from ps_oneshot.agentcarousel import AgentCarousel, CarouselHooks
+from ps_oneshot.control import ControlServer, send
 from ps_oneshot.herd import Agent
+from ps_oneshot.ui.theme import FALLBACK
 from ps_oneshot.ui.radial import GroupSpan, _row_width, group_spans, marquee_offset, slice_for_vector
 
 
@@ -144,9 +150,13 @@ class GroupSpansTest(unittest.TestCase):
 
 
 class AgentPickerTest(unittest.TestCase):
-    def test_waiting_first_then_by_machine(self) -> None:
-        agents = [agent("w", "working", host="srv"), agent("i"), agent("d", "done", 9), agent("b", "blocked", 5)]
-        self.assertEqual([a.key for a in agentpicker.card_order(agents)], ["b", "d", "i", "w"])
+    def test_cards_by_machine_opening_on_the_most_urgent(self) -> None:
+        agents = [agent("w", "working", 3, host="srv"), agent("i"), agent("d", "done", 9), agent("b", "blocked", 5)]
+        self.assertEqual([a.key for a in agentcards.card_order(agents)], ["i", "d", "b", "w"])
+        self.assertEqual(agentcards.most_urgent(agents).key, "b")
+        older_done = [agent("d1", "done", 9), agent("d2", "done", 4), agent("w", "working", 1)]
+        self.assertEqual(agentcards.most_urgent(older_done).key, "d2")
+        self.assertEqual(agentcards.most_urgent([agent("i", since=0), agent("w", "working", 7)]).key, "w")
 
     def test_card_names_are_distinct_and_path_safe(self) -> None:
         agents = [agent("a", title="π ⠏ Fix a/b"), agent("b", title="π ⠏ Fix a/b"), agent("c", host="srv")]
@@ -154,18 +164,152 @@ class AgentPickerTest(unittest.TestCase):
 
     def test_waited(self) -> None:
         now = 1_000_000.0
-        self.assertEqual(agentpicker.waited(0, now), "")
-        self.assertEqual(agentpicker.waited(int((now - 45) * 1000), now), "45s")
-        self.assertEqual(agentpicker.waited(int((now - 3 * 3600 - 300) * 1000), now), "3h 5m")
-        self.assertEqual(agentpicker.waited(int((now - 2 * 3600) * 1000), now), "2h")
+        self.assertEqual(agentcards.waited(0, now), "")
+        self.assertEqual(agentcards.waited(int((now - 45) * 1000), now), "45s")
+        self.assertEqual(agentcards.waited(int((now - 3 * 3600 - 300) * 1000), now), "3h 5m")
+        self.assertEqual(agentcards.waited(int((now - 2 * 3600) * 1000), now), "2h")
 
     def test_draws_a_card(self) -> None:
         lights = config.build(config._default("base"), "hyprland", []).section("lights")
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "card.png")
-            agentpicker.draw_card(path, agent("a", "blocked", title="A long task title " * 8), agentpicker.load_theme(), lights)
+            agentcards.draw_card(path, agent("a", "blocked", title="A long task title " * 8), FALLBACK, lights)
             with open(path, "rb") as handle:
                 self.assertEqual(handle.read(8), b"\x89PNG\r\n\x1a\n")
+
+
+class FakeCarouselView:
+    theme = FALLBACK
+
+    def __init__(self) -> None:
+        self.on_key = None
+        self.visible = False
+        self.items: list = []
+        self.selection = -1
+        self.texts: dict = {}
+
+    def reload_theme(self) -> None:
+        pass
+
+    def show(self, items, selection, monitor, **texts) -> None:
+        self.visible = True
+        self.update(items, selection, **texts)
+
+    def update(self, items, selection, **texts) -> None:
+        self.items, self.selection, self.texts = items, selection, texts
+
+    def hide(self) -> None:
+        self.visible = False
+
+    @property
+    def selected_key(self) -> str:
+        return self.items[self.selection].key.split("\0")[0]
+
+
+class FakeHerd:
+    def __init__(self, agents: list[Agent]) -> None:
+        self.agents = agents
+        self.focused: list[Agent] = []
+
+    def focus(self, agent: Agent) -> None:
+        self.focused.append(agent)
+
+
+class AgentCarouselTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.cfg = config.build(config._default("base"), "hyprland", [])
+        self.view = FakeCarouselView()
+        self.notes: list[str] = []
+        self.rumbles: list = []
+        self.agents = [
+            agent("idle", "idle", 1), agent("work", "working", 2), agent("done", "done", 9),
+            agent("wait", "blocked", 5, host="srv", title="π ⠏ Deploy prod"),
+        ]
+        self.herd = FakeHerd(self.agents)
+        self.carousel = AgentCarousel(self.cfg, self.view, self.herd, CarouselHooks(
+            rumble=self.rumbles.append, monitor=lambda: None, capture_sticks=lambda: None, notify=self.notes.append,
+        ))
+
+    def key(self, name: str, char: str = "") -> None:
+        self.view.on_key(name, char, True, False)
+
+    def test_opens_on_the_most_urgent_with_blinking_waiters(self) -> None:
+        self.carousel.open()
+        self.assertTrue(self.view.visible)
+        self.assertEqual(self.view.selected_key, "wait")
+        self.assertEqual([i.blink for i in self.view.items], [False, False, True, True])
+
+    def test_no_agents_notifies_instead(self) -> None:
+        self.herd.agents = []
+        self.carousel.open()
+        self.assertFalse(self.view.visible)
+        self.assertEqual(self.notes, ["No agents running"])
+
+    def test_moves_wrap_and_l1_r1_jump_between_waiters(self) -> None:
+        self.carousel.open()
+        self.carousel.on_button("dpad_right")
+        self.assertEqual(self.view.selected_key, "idle")  # wrapped past the end
+        self.carousel.on_button("r1")
+        self.assertEqual(self.view.selected_key, "done")
+        self.carousel.on_button("r1")
+        self.assertEqual(self.view.selected_key, "wait")
+        self.carousel.on_button("l1")
+        self.assertEqual(self.view.selected_key, "done")
+
+    def test_typing_filters_and_escape_clears_then_closes(self) -> None:
+        self.carousel.open()
+        for char in "depl":
+            self.key(char, char)
+        self.assertEqual([i.key.split("\0")[0] for i in self.view.items], ["wait"])
+        self.assertEqual(self.view.texts["filter_text"], "depl")
+        self.key("x", "x")
+        self.assertEqual(self.view.items, [])
+        self.assertEqual(self.view.texts["empty_text"], "No matches")
+        self.key("BackSpace")
+        self.key("Escape")
+        self.assertEqual(len(self.view.items), 4)
+        self.assertTrue(self.view.visible)
+        self.key("Escape")
+        self.assertFalse(self.view.visible)
+
+    def test_refresh_follows_the_selected_agent(self) -> None:
+        self.carousel.open()
+        self.carousel.on_button("dpad_left")
+        self.assertEqual(self.view.selected_key, "done")
+        self.carousel.refresh([self.agents[2], agent("new", "working", 1), *self.agents[:2]])
+        self.assertEqual(self.view.selected_key, "done")
+
+    def test_pick_closes_then_focuses(self) -> None:
+        self.carousel.open()
+        self.key("Return")
+        self.assertFalse(self.view.visible)
+        context = GLib.MainContext.default()
+        deadline = GLib.get_monotonic_time() + 1_000_000
+        while not self.herd.focused and GLib.get_monotonic_time() < deadline:
+            context.iteration(False)
+        self.assertEqual([a.key for a in self.herd.focused], ["wait"])
+
+
+class ControlSocketTest(unittest.TestCase):
+    def test_actions_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "control.sock")
+            seen: list[str] = []
+            server = ControlServer(lambda action: seen.append(action) or (None if action != "bad" else "nope"), path)
+            self.assertTrue(server.start())
+            self.assertEqual(oct(os.stat(path).st_mode & 0o777), "0o600")
+            replies: list = []
+            client = threading.Thread(target=lambda: replies.extend([send("herd:pick", path), send("bad", path)]))
+            client.start()
+            context = GLib.MainContext.default()
+            while client.is_alive():
+                context.iteration(False)
+            self.assertEqual(replies, ["ok", "error: nope"])
+            self.assertEqual(seen, ["herd:pick", "bad"])
+            self.assertFalse(ControlServer(lambda action: None, path).start())  # a second daemon stays out
+            server.stop()
+            self.assertFalse(os.path.exists(path))
+            self.assertIsNone(send("herd:pick", path))
 
 
 if __name__ == "__main__":

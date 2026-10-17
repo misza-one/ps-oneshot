@@ -42,7 +42,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 - **Outputs**
   - `lights.LightEngine.frame` drives the sysfs LED-class lightbar and player LEDs, plus evdev FF rumble. `App.refresh_lights` holds the LED writes while `Controller.rumbling` (they would stop our rumble, see the HID invariant) and keeps ticking until it's over.
   - Trigger effects and the mic mute (LED + the built-in mic's hardware mute, `power_save_control`) go out as hidraw output reports (`dualsense.build_output_report`). The kernel toggles that mute on every mic-button press; `App._sync_mic_mute` puts it back to the system mic state.
-  - Overlays: `ui.radial.RadialMenu` and `ui.cheatsheet.CheatSheet`. They open with their own animation: Hyprland's layer animation is off for the `ps-oneshot` namespace (`Hyprland.no_layer_animation`, set at startup and again on `configreloaded`, which drops the rule).
+  - Overlays: `ui.radial.RadialMenu`, `ui.carousel.Carousel` and `ui.cheatsheet.CheatSheet`. They open with their own animation: Hyprland's layer animation is off for the `ps-oneshot` namespace (`Hyprland.no_layer_animation`, set at startup and again on `configreloaded`, which drops the rule).
   - Sounds: `App._play_sound`. Wired, `sounds.play` runs `pw-play` (to the controller's sound card when it has one). Over Bluetooth, `sounds.BluetoothSpeaker`: samples at 45 kHz (`dualsense.BT_AUDIO_RATE`), Opus CBR frames of 200 bytes via `linux.opus` (ctypes libopus, optional), cached per sound and volume; a worker thread sends a speaker-routing 0x31 (`build_output_report(speaker=…, keep_rumble=True)`), then one `build_audio_report` (0x36) every 512/48000 s. A newer sound cuts off the playing one. `[sounds] volume` steps at runtime with `sounds:louder|quieter` (Effects +/− in the settings ring, whose hub shows the level through `Choice.detail`).
 - **Radial menus:** `menus.RadialMenus` owns the view stack and calls back through `menus.Hooks`. Its live sources are `herd`, `audio`, `voxtype-language`, `settings` and `favorites`. Every selection change goes through `RadialMenus._sync`, which also sends `_legend` (what each button does on the selected slice) to the overlay's bottom-right panel (`RadialMenu.set_legend`). Every `_show` also sends `Hooks.battery` (`App._battery_level`: the emptiest pad's percent and charging) to the bottom-left panel (`RadialMenu.set_battery`).
 - **Favorites** (`favorites.Favorites`): slots saved as state key `favorites` (entries shaped like config items, `None` = empty), seeded from `[favorites] items` until the first edit. In an open ring, a favorites slice (`Slice.favorite` = slot index) takes:
@@ -50,6 +50,8 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
   - L1/R1 move the slot.
   - ✕ on an empty slot: the ring closes, `[favorites] picker` gets the choices on stdin, and the ring reopens with that slot selected.
   - Inline in a configured ring, edits rebuild it from `View.items`. App icons draw through `ui.radial.lookup_icon` (GTK icon theme → render node → cairo).
+- **Agent carousel** (`herd:pick`, `agentcarousel.AgentCarousel` + `ui.carousel.Carousel`): Omarchy's image picker (the theme switcher) redrawn by us, so status dots can blink. Same geometry (768x475 card, 108x432 strips at a 78 px step, skew 28) and the theme's `[image-picker]` colours from `shell.toml` (`Theme.picker_scrim` / `picker_selected` / `picker_unselected`). Cards are in R3 order (`agentcards.card_order`, by machine) and it opens on `agentcards.most_urgent`. Cards and strips (`agentcards.paint_card` / `paint_strip`) are painted once per `CarouselItem.key` into surfaces; a frame only composites them, and frames come on a change or a blink (`BLINK_MS`). Dots: on each strip, on the card, and in a row under it (`agentcards.dot_style`; waiting agents blink). Pad: D-pad/stick ←/→ (the stick repeats), L1/R1 previous/next waiting, ✕ go to, ○/L3/R3 close. Keyboard (it holds it like the radial): arrows, Tab, Home/End, Enter, Escape; typing filters (`agentcards.matches`). `App._on_herd` refreshes it live, keeping the selected agent. `herd:pick` again closes it.
+- **Control socket** (`control.ControlServer`, `$XDG_RUNTIME_DIR/ps-oneshot/control.sock`, 0600): one action per connection, `ok` or `error: …` back (`App._on_control` checks the kind and radial name). `ps-oneshot agents` (`agentpicker.run`) sends `herd:pick`; with no daemon answering it falls back to `agentpicker.pick`, the same cards as PNGs in Omarchy's own image selector (static). A second daemon (a test instance) finds the socket answering and leaves it alone, so smoke tests can't open the carousel through it: bind a pad button to `herd:pick` instead.
 - **Cheat sheet:** generated from the live config (`labels.cheatsheet_sections`). Each row shows the binding's `desc`, or `actions.describe(...)` when there is none.
 
 ## Key Directories
@@ -58,7 +60,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 |---|---|
 | `ps_oneshot/` | daemon: `app.py` wiring and input state machine, config, actions, feature modules |
 | `ps_oneshot/linux/` | ctypes evdev/uinput, DualSense sysfs discovery, HID output reports (no python-evdev), libxkbcommon layouts (`xkb.py`) |
-| `ps_oneshot/ui/` | GTK 4 layer-shell overlays, Omarchy theme loading, `demo.py` |
+| `ps_oneshot/ui/` | GTK 4 layer-shell overlays (radial, carousel, cheat sheet), Omarchy theme loading (`colors.toml` + `shell.toml`), `demo.py` |
 | `ps_oneshot/defaults/` | `base.toml` (generic Hyprland, plus the grammar docs in its header), `omarchy.toml` (Omarchy overlay) |
 | `tests/` | stdlib unittest, pure logic |
 | `tools/` | `fake_dualsense.py`, a virtual DualSense over uinput for smoke tests; `screenshots.py`, the README pictures |
@@ -68,7 +70,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 ## Development Commands
 
 ```sh
-python -m unittest discover -s tests                   # full suite: 107 tests, well under a second
+python -m unittest discover -s tests                   # full suite: 114 tests, well under a second
 python -m unittest discover -s tests -k vibration      # by name pattern
 python -m unittest tests.test_core.ConfigTest          # module/class/method (works without tests/__init__.py)
 ruff check --select F,E9 ps_oneshot tests tools        # lint used in practice; pyproject has no ruff config
@@ -131,15 +133,16 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 
 - **Never grab the gamepad node;** other apps and games must still see it. Only the touchpad is grabbed, in mouse mode, while active (`Pad.set_active`).
 - **HID output reports set only the fields they own** (`build_output_report`: trigger, mic-LED and mic-mute (power-save) flags, plus the speaker's volume, path and preamp when routing sound). The lightbar and player LEDs go through the LED class and rumble through FF; otherwise we fight `hid-playstation`. One bit is everyone's: HAPTICS_SELECT (flag0 bit 1, "rumble, not audio haptics"). The controller stops a running rumble on any report without it, so ours set it while `Controller.rumbling`, the audio reports always do, and the 0x36 state section carries nothing else. A full state copied there (as LinuxAudio4Dualsense5 sends) marks the trigger, rumble and mic fields valid too, and resets them with every frame.
-- **Overlays never take clicks:** OVERLAY layer, empty input region. The cheat sheet's keyboard mode is NONE; the radial (`Overlay.takes_keyboard`) holds the keyboard exclusively while open, so Escape and friends work it (`radial.KEY_BUTTONS` → `RadialMenus._on_key`, same path as the pad). Anything that runs after the ring closes (actions, the favorites picker) waits `menus.KEYBOARD_HANDBACK_MS`, or `key:` combos would land on our surface instead of the window.
-- **An open radial or cheat sheet owns the sticks.** Capture is derived (`menus.is_open or cheatsheet.visible`), so call `App._sync_stick_capture()` after changing either one.
+- **Overlays never take clicks:** OVERLAY layer, empty input region. The cheat sheet's keyboard mode is NONE; the radial and the carousel (`Overlay.takes_keyboard`) hold the keyboard exclusively while open, so Escape and friends work it (`radial.KEY_BUTTONS` → `RadialMenus._on_key`, same path as the pad). Anything that runs after one closes (actions, the favorites picker, focusing an agent) waits `menus.KEYBOARD_HANDBACK_MS`, or `key:` combos would land on our surface instead of the window.
+- **An open radial, carousel or cheat sheet owns the sticks.** Capture is derived (`menus.is_open or cheatsheet.visible or carousel.is_open`), so call `App._sync_stick_capture()` after changing any of them.
 - **A modifier (□) is a layer only when another button is pressed first** (`Held.chord`). In that case its own tap/hold don't fire.
 - **Prefer `wm:` over raw `dispatch:`** so bindings work on both Lua-configured Hyprland (≥ 0.55) and the legacy dispatchers.
 
 ## Important Files
 
 - `ps_oneshot/__main__.py`: the CLI (`run|check|devices|agents`, `-c`, `-v`, `--version`) and its exit codes.
-- `ps_oneshot/agentpicker.py`: `ps-oneshot agents`, a one-shot process apart from the daemon: polls Omaherd, draws one card per agent (cairo, `CARD_W`x`CARD_H`, twice the selector's expanded card; unselected strips show the centre line), opens them through `omarchy-shell image-selector open` with a fresh `$XDG_RUNTIME_DIR/ps-oneshot/agents/<run>/` (Qt caches images by path) and focuses the pick with `HerdProvider.focus_now`.
+- `ps_oneshot/agentpicker.py`: `ps-oneshot agents`. Asks the daemon for its carousel (`control.send`); without one it polls Omaherd itself, writes the cards as PNGs (`agentcards.draw_card`) into a fresh `$XDG_RUNTIME_DIR/ps-oneshot/agents/<run>/` (Qt caches images by path), opens them through `omarchy-shell image-selector open` and focuses the pick with `HerdProvider.focus_now`.
+- `ps_oneshot/agentcards.py`: what both pickers draw per agent (card, strip, status dot), their order and the most urgent agent.
 - `ps_oneshot/app.py`: `App`. Wiring, layers, tap/hold/chord, staged triggers, the R2 shot (`_dictation_action`, `_shot_enter`), pause/game mode, the settings ring.
 - `ps_oneshot/apps.py`: desktop entries through Gio (`installed`, `find`), window ↔ app matching, `launch`.
 - `ps_oneshot/favorites.py`: the favorites slots (`place` swaps a duplicate, `shift` moves), the picker list and its worker thread.

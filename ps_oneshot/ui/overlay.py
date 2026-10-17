@@ -169,6 +169,9 @@ class Overlay:
     def visible(self) -> bool:
         return self._window is not None and self._window.get_visible()
 
+    def reload_theme(self) -> None:
+        self.theme = self._theme_loader()
+
     def hide(self) -> None:
         if self._window is None or not self._window.get_visible():
             return
@@ -197,8 +200,7 @@ class Overlay:
             width, height = self._content_size(1920, 1080)
         self._area.set_content_width(math.ceil(width))
         self._area.set_content_height(math.ceil(height))
-        centre, edge = self.backdrop_alpha
-        bg = self.theme.background
+        bg, centre, edge = self._backdrop()
         self._css.load_from_string(
             f"window.{NAMESPACE}-{self._name} {{ background: transparent; }}\n"
             f".{NAMESPACE}-{self._name}-backdrop {{ background-image: radial-gradient("
@@ -302,6 +304,10 @@ class Overlay:
 
     def _on_draw(self, _area: Gtk.DrawingArea, cr: cairo.Context, width: int, height: int) -> None:
         self._draw(cr, width, height)
+
+    def _backdrop(self) -> tuple[RGB, float, float]:
+        """The full-screen dim behind the content: colour, alpha at the centre and at the edges."""
+        return self.theme.background, *self.backdrop_alpha
 
     def _content_size(self, monitor_width: int, monitor_height: int) -> tuple[float, float]:
         raise NotImplementedError

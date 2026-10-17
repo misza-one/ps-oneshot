@@ -21,7 +21,9 @@ from gi.repository import GLib, Gtk  # noqa: E402
 from . import APP_NAME, apps, sounds  # noqa: E402
 from . import lights as fx  # noqa: E402
 from .actions import ActionRunner, spawn  # noqa: E402
-from .config import TRIGGERS, Binding, Config  # noqa: E402
+from .agentcarousel import AgentCarousel, CarouselHooks  # noqa: E402
+from .config import ACTION_KINDS, TRIGGERS, Binding, Config  # noqa: E402
+from .control import ControlServer  # noqa: E402
 from .couch import CouchMode  # noqa: E402
 from .dictation import CaptureWatcher, DictationLog, capture_path  # noqa: E402
 from .favorites import Favorites  # noqa: E402
@@ -35,6 +37,7 @@ from .menus import Hooks, RadialMenus  # noqa: E402
 from .pad import Pad  # noqa: E402
 from .sources import Choice, LevelControl, MicMuteWatcher, next_stop, read_number  # noqa: E402
 from .terminals import FootFollower  # noqa: E402
+from .ui.carousel import Carousel  # noqa: E402
 from .ui.cheatsheet import CheatSheet  # noqa: E402
 from .ui.overlay import NAMESPACE as OVERLAY_NAMESPACE  # noqa: E402
 from .ui.radial import RadialMenu  # noqa: E402
@@ -115,6 +118,11 @@ class App:
             capture_sticks=self._sync_stick_capture, settings=self._settings_choices,
             window_class=lambda: self.window_class, paused=lambda: self.paused, battery=self._battery_level,
         ))
+        self.carousel = AgentCarousel(cfg, Carousel(load_theme), self.herd, CarouselHooks(
+            rumble=self.rumble, monitor=lambda: self.monitor, capture_sticks=self._sync_stick_capture,
+            notify=lambda text: spawn(["notify-send", "-a", APP_NAME, "-t", "2500", text]),
+        ))
+        self.control = ControlServer(self._on_control)
         self.dictation = DictationLog(suffix=_voxtype_suffix())
         self.capture: CaptureWatcher | None = None
         self.mic = MicMuteWatcher(self._on_mic_mute)
@@ -180,6 +188,7 @@ class App:
         if self.cfg.get("foot", "follow"):
             self.foot = FootFollower(self.hypr, after=self._after_foot_follow)
         self.events.start()
+        self.control.start()
         self.mic.start()
         if self.herd is not None:
             self.herd.start()
@@ -200,6 +209,7 @@ class App:
         self.pads.clear()
         if self.herd is not None:
             self.herd.stop()
+        self.control.stop()
         self.mic.stop()
         if self.capture is not None:
             self.capture.close()
@@ -210,6 +220,20 @@ class App:
                 device.close()
         self.loop.quit()
         return False
+
+    def _on_control(self, action: str) -> str | None:
+        """An action from the control socket (`ps-oneshot agents`): None once it's run, else why not."""
+        kind, _, arg = action.partition(":")
+        if kind not in ACTION_KINDS:
+            return f"unknown action {action!r}"
+        if kind == "radial" and arg not in self.cfg.radials:
+            return f"unknown radial menu {arg!r}"
+        try:
+            self.actions.run(action)
+        except Exception as error:  # the daemon never crashes on a request
+            log.warning("control action %s failed: %s", action, error)
+            return str(error) or type(error).__name__
+        return None
 
     def _after_foot_follow(self) -> None:
         for action in self.cfg.get("foot", "after"):
@@ -326,12 +350,13 @@ class App:
             self._hide_cheatsheet()
 
     def _sync_stick_capture(self, _radial_open: bool = False) -> None:
-        """An open radial or cheat sheet owns the sticks: no scrolling, no stick buttons underneath."""
-        captured = self.menus.is_open or self.cheatsheet.visible
+        """An open radial, carousel or cheat sheet owns the sticks: no scrolling, no stick buttons underneath."""
+        captured = self.menus.is_open or self.cheatsheet.visible or self.carousel.is_open
         for pad in self.pads.values():
             pad.capture_sticks(captured)
 
     def _show_cheatsheet(self) -> None:
+        self.carousel.close()
         self.cheatsheet.show(cheatsheet_sections(self.cfg), self.monitor)
         self._sync_stick_capture()
 
@@ -394,6 +419,10 @@ class App:
             if self.menus.on_button(button) or button != "ps":
                 return
             self.menus.close()  # PS leaves the radial and then does its usual job
+        if self.carousel.is_open:
+            if self.carousel.on_button(button) or button != "ps":
+                return
+            self.carousel.close()  # likewise
         if self.cheatsheet.visible and button == "circle":
             self._hide_cheatsheet()
             return
@@ -533,11 +562,14 @@ class App:
                 self.refresh_lights()
 
     def _on_stick(self, pad: Pad) -> None:
-        if self.paused or not (self.menus.is_open or self.cheatsheet.visible):
+        if self.paused or not (self.menus.is_open or self.cheatsheet.visible or self.carousel.is_open):
             return
         x, y = max(pad.sticks.values(), key=lambda v: v[0] ** 2 + v[1] ** 2)
         if self.menus.is_open:
             self.menus.on_stick(x, y)
+            return
+        if self.carousel.is_open:
+            self.carousel.on_stick(x, y)
             return
         deadzone = float(self.cfg.get("input", "stick_deadzone"))
         past = max(0.0, abs(y) - deadzone) / (1.0 - deadzone)
@@ -571,9 +603,18 @@ class App:
     # built-in actions ---------------------------------------------------------------
 
     def _open_radial(self, name: str) -> None:
+        self.carousel.close()
         self.menus.open(name)
 
     def _herd_action(self, arg: str) -> None:
+        if arg == "pick":
+            if self.carousel.is_open:  # the same key again closes it, like Omarchy's menus
+                self.carousel.close()
+                return
+            self.menus.close()
+            self._hide_cheatsheet()
+            self.carousel.open()
+            return
         if arg != "jump":
             log.warning("unknown herd action %r", arg)
             return
@@ -914,6 +955,7 @@ class App:
         if self.sounds_on and any(agent.status == "blocked" for agent in fresh):
             self._play_sound("summon")
         self.menus.refresh_source("herd")
+        self.carousel.refresh(agents)
         self.refresh_lights()
 
     # lights / rumble / battery ---------------------------------------------------------

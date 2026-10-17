@@ -92,7 +92,7 @@ def describe(action: str, radial_titles: dict[str, str]) -> str:
     if kind == "radial":
         return f"{radial_titles.get(arg, arg)} radial"
     if kind == "herd":
-        return "Jump to waiting agent"
+        return "Agents carousel" if arg == "pick" else "Jump to waiting agent"
     if kind == "ui":
         return "Cheat sheet"
     if kind == "app":

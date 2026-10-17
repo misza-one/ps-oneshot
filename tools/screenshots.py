@@ -20,9 +20,11 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk  # noqa: E402
 
 from ps_oneshot import config  # noqa: E402
+from ps_oneshot.agentcarousel import AgentCarousel, CarouselHooks  # noqa: E402
 from ps_oneshot.herd import Agent  # noqa: E402
 from ps_oneshot.labels import cheatsheet_sections  # noqa: E402
 from ps_oneshot.menus import ICON_ADD, INLINE_COLOR, agent_slices  # noqa: E402
+from ps_oneshot.ui.carousel import Carousel  # noqa: E402
 from ps_oneshot.ui.cheatsheet import CheatSheet, _Metrics  # noqa: E402
 from ps_oneshot.ui.radial import RadialItem, RadialMenu, _Hold, draw_halo  # noqa: E402
 from ps_oneshot.ui.theme import Theme, load_theme  # noqa: E402
@@ -45,17 +47,21 @@ FAVORITES = [
 
 
 def agents() -> list[Agent]:
-    def agent(project: str, kind: str, status: str, host: str, hostname: str, tab: str) -> Agent:
-        return Agent(key=f"{host}:{project}", project=project, kind=kind, status=status, title="", pane_id="w1:p1",
-                     session="default", host=host, hostname=hostname, since=0, tab=tab)
+    now_ms = int(time.time() * 1000)
+
+    def agent(project: str, kind: str, status: str, host: str, hostname: str, tab: str, title: str = "",
+              minutes: float = 0) -> Agent:
+        return Agent(key=f"{host}:{project}", project=project, kind=kind, status=status, title=title,
+                     pane_id="w1:p1", session="default", host=host, hostname=hostname,
+                     since=now_ms - int(minutes * 60_000), tab=tab)
 
     return [
-        agent("landing-page", "claude", "blocked", "local", "workstation", tab="hero copy"),
-        agent("mobile-app", "codex", "working", "local", "workstation", tab="tests"),
-        agent("docs", "omp", "done", "local", "workstation", tab="guide"),
-        agent("api", "pi", "working", "build", "build-server", tab="migrations"),
-        agent("billing", "opencode", "blocked", "build", "build-server", tab="deploy"),
-        agent("infra", "claude", "idle", "build", "build-server", tab="terraform"),
+        agent("landing-page", "claude", "blocked", "local", "workstation", "hero copy", "Pick a headline", 4),
+        agent("mobile-app", "codex", "working", "local", "workstation", "tests", "Fix the flaky login test", 2),
+        agent("docs", "omp", "done", "local", "workstation", "guide", "Write the setup guide", 1),
+        agent("api", "pi", "working", "build", "build-server", "migrations", "Add the orders table", 6),
+        agent("billing", "opencode", "blocked", "build", "build-server", "deploy", "Approve the prod deploy", 9),
+        agent("infra", "claude", "idle", "build", "build-server", "terraform", "Plan the VPC", 30),
     ]
 
 
@@ -110,6 +116,34 @@ def ring(
     return surface
 
 
+class _Herd:
+    def __init__(self, agents: list[Agent]) -> None:
+        self.agents = agents
+
+
+def carousel(theme: Theme, cfg: config.Config) -> cairo.ImageSurface:
+    """The agents carousel as it opens: on the most urgent agent, its blinking dots lit."""
+    view = Carousel(lambda: theme)
+    view.theme = theme
+    view._area = Gtk.DrawingArea()  # unrealized: only lends the scale
+    session = AgentCarousel(cfg, view, _Herd(agents()), CarouselHooks(  # type: ignore[arg-type]
+        rumble=lambda _pattern: None, monitor=lambda: None, capture_sticks=lambda: None, notify=print,
+    ))
+    session.ui = view
+    view.reload_theme = lambda: None  # type: ignore[method-assign]  # keep the theme we were given
+    view._present = lambda _monitor: None  # type: ignore[method-assign]  # offscreen: no window
+    view._painted_theme = theme
+    session.open()
+    width, height = view._content_size(*SCREEN)
+    surface, cr = canvas(width, height)
+    backdrop(cr, width, height, theme, (0.0, 0.0))
+    r, g, b, alpha = theme.picker_scrim
+    cr.set_source_rgba(r, g, b, alpha)
+    cr.paint()
+    view._draw(cr, round(width), round(height))
+    return surface
+
+
 def cheat_sheet(theme: Theme, cfg: config.Config) -> cairo.ImageSurface:
     sheet = CheatSheet(lambda: theme)
     sheet.theme = theme
@@ -144,6 +178,7 @@ def main() -> int:
             theme, "Agents", [s.item for s in agent_slices(agents(), cfg.section("lights"))], 0,
             [("✕", "Go to agent"), ("△", "Hold: close agent"), ("○", "Close")],
         ),
+        "carousel.png": carousel(theme, cfg),
         "cheatsheet.png": cheat_sheet(theme, cfg),
     }
     for name, surface in pictures.items():

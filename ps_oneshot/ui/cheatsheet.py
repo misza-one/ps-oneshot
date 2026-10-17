@@ -187,14 +187,14 @@ class CheatSheet(Overlay):
                     theme,
                     _title_markup(name, spacing, m.section_title),
                     m.section_title,
-                    weight=Pango.Weight.BOLD,
+                    weight=Pango.Weight.SEMIBOLD,
                     markup=True,
                     align=Pango.Alignment.LEFT,
                 ),
                 [
                     (
                         make_layout(
-                            context, theme, glyph_markup(key, m.key), m.key, weight=Pango.Weight.BOLD, markup=True
+                            context, theme, glyph_markup(key, m.key), m.key, weight=Pango.Weight.SEMIBOLD, markup=True
                         ),
                         make_layout(
                             context, theme, desc, m.desc, width=m.desc_width, lines=0, align=Pango.Alignment.LEFT
@@ -238,7 +238,7 @@ class CheatSheet(Overlay):
         max_height: float,
     ) -> _Plan | None:
         theme = self.theme
-        title = make_layout(context, theme, TITLE, m.title, weight=Pango.Weight.BOLD, align=Pango.Alignment.LEFT)
+        title = make_layout(context, theme, TITLE, m.title, weight=Pango.Weight.SEMIBOLD, align=Pango.Alignment.LEFT)
         subtitle = make_layout(context, theme, SUBTITLE, m.subtitle, align=Pango.Alignment.LEFT)
         icon: Pango.Layout | None = make_layout(context, theme, TITLE_ICON, m.title * 1.05)
         if icon is not None and icon.get_unknown_glyphs_count() > 0:

@@ -426,7 +426,7 @@ class RadialMenu(Overlay):
         x, y = math.cos(mid) * centre, math.sin(mid) * centre
 
         label_size = ring.outer * (0.068 if len(self._items) <= 8 else 0.058)
-        weight = Pango.Weight.BOLD if pop > 0.5 else Pango.Weight.MEDIUM
+        weight = Pango.Weight.SEMIBOLD if pop > 0.5 else Pango.Weight.MEDIUM
         # (text, size, colour, alpha, lines, bold)
         texts = [(item.label, label_size, theme.foreground, 0.72 + 0.28 * pop, 1 if item.sublabel else 2, True)]
         if item.sublabel:
@@ -541,7 +541,7 @@ class RadialMenu(Overlay):
     ) -> None:
         item = self._items[index]
         fill = self._tint(item, theme) if item.badge_color is None else _rgb(item.badge_color)
-        layout = make_layout(context, theme, item.badge, ring.outer * 0.052, weight=Pango.Weight.BOLD)
+        layout = make_layout(context, theme, item.badge, ring.outer * 0.052, weight=Pango.Weight.SEMIBOLD)
         text_w, text_h = layout_size(layout)
         height = text_h + ring.outer * 0.026
         width = max(height, text_w + height * 0.75)
@@ -573,7 +573,7 @@ class RadialMenu(Overlay):
         cr.set_source_rgb(*theme.accent)
         cr.fill()
         for glyph in CHECK_GLYPHS:
-            layout = make_layout(context, theme, glyph, radius * 1.15, weight=Pango.Weight.BOLD)
+            layout = make_layout(context, theme, glyph, radius * 1.15, weight=Pango.Weight.SEMIBOLD)
             if layout.get_unknown_glyphs_count() == 0:
                 draw_layout(cr, layout, x, y, _ink(theme.accent, theme))
                 return
@@ -628,7 +628,7 @@ class RadialMenu(Overlay):
             icon_ink, icon_logical = icon.get_pixel_extents()
             icon_w = icon_ink.width + size * 0.45
 
-        layout = make_layout(context, theme, text, size, weight=Pango.Weight.BOLD)
+        layout = make_layout(context, theme, text, size, weight=Pango.Weight.SEMIBOLD)
         text_w, text_h = layout_size(layout)
         height = text_h + 2 * pad_y
         max_width = ring.outer * GROUP_LABEL_MAX_WIDTH
@@ -640,7 +640,7 @@ class RadialMenu(Overlay):
                 max_width = min(max_width, max(chord * 0.92, ring.outer * 0.24))
         if icon_w + text_w + 2 * pad_x > max_width:
             text_width = max(size, max_width - 2 * pad_x - icon_w)
-            layout = make_layout(context, theme, text, size, weight=Pango.Weight.BOLD, width=text_width)
+            layout = make_layout(context, theme, text, size, weight=Pango.Weight.SEMIBOLD, width=text_width)
             text_w = layout_size(layout)[0]
         width = icon_w + text_w + 2 * pad_x
         # Push the label out until its box clears the arc in the direction of the group.
@@ -691,7 +691,7 @@ class RadialMenu(Overlay):
         width = radius * 1.5
         if hold is None and selected is None:
             title = make_layout(
-                context, theme, self._title, ring.outer * 0.075, weight=Pango.Weight.BOLD, width=width, lines=2
+                context, theme, self._title, ring.outer * 0.075, weight=Pango.Weight.SEMIBOLD, width=width, lines=2
             )
             draw_layout(cr, title, 0, 0, theme.foreground, 0.9)
             return
@@ -708,11 +708,11 @@ class RadialMenu(Overlay):
             theme,
             f'<span letter_spacing="{int(ring.outer * 0.006 * Pango.SCALE)}">{heading}</span>',
             small,
-            weight=Pango.Weight.BOLD,
+            weight=Pango.Weight.SEMIBOLD,
             width=width * 0.9,
             markup=True,
         )
-        label = make_layout(context, theme, name, ring.outer * 0.072, weight=Pango.Weight.BOLD, width=width, lines=2)
+        label = make_layout(context, theme, name, ring.outer * 0.072, weight=Pango.Weight.SEMIBOLD, width=width, lines=2)
         blocks: list[tuple[Pango.Layout, RGB, float]] = [
             (title, theme.muted, 1.0),
             (label, theme.foreground, 1.0),
@@ -752,7 +752,7 @@ class RadialMenu(Overlay):
         size = ring.outer * LEGEND_TEXT
         rows = [
             (
-                make_layout(context, theme, glyph_markup(key, size), size, weight=Pango.Weight.BOLD, markup=True),
+                make_layout(context, theme, glyph_markup(key, size), size, weight=Pango.Weight.SEMIBOLD, markup=True),
                 make_layout(context, theme, text, size, width=ring.outer * 1.3, align=Pango.Alignment.LEFT),
             )
             for key, text in self._legend
@@ -793,7 +793,7 @@ class RadialMenu(Overlay):
         percent, charging = self._battery
         icon = BATTERY_CHARGING if charging else BATTERY_ICONS[max(0, min(percent // 10, 10))]
         size = ring.outer * LEGEND_TEXT
-        text = make_layout(context, theme, f"{icon} {percent}%", size, weight=Pango.Weight.BOLD)
+        text = make_layout(context, theme, f"{icon} {percent}%", size, weight=Pango.Weight.SEMIBOLD)
         text_w, text_h = layout_size(text)
         inset = size * 0.85
         panel_w, panel_h = text_w + 2 * inset, text_h + 2 * size * 0.18 + 2 * inset  # a one-row legend's height
