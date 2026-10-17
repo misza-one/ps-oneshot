@@ -14,7 +14,7 @@ With it you can:
 - navigate launcher menus and answer agent prompts (Enter, Escape, arrow keys),
 - talk to an agent and fire the prompt off with one pull of R2 — the "one shot",
 - take dictation back with the adaptive L2 trigger,
-- change an agent's thinking level from the controller,
+- change an agent's thinking level (Claude Code: effort) from the controller,
 - switch the dictation language and audio devices from a radial menu,
 - use the touchpad as a mouse,
 - see AI-agent status on the lightbar, and feel and hear when an agent needs you.
@@ -47,7 +47,7 @@ Works on any Hyprland setup. On [Omarchy](https://omarchy.org) it also uses Omar
   - with nothing dictated left, a soft press erases a word and a full press clears the line.
 
   Exact erasing needs the [VoxType hook](#voxtype-dictation-undo); without it L2 still erases words and lines.
-- **Thinking level (Options).** A tap sends the focused agent's own "next thinking level" key; the agent kind comes from Omaherd (omp and pi: Shift+Tab, Claude Code: Alt+T, configurable in `[agents]`). Outside an agent window, and on a hold, Options opens the Omarchy menu.
+- **Thinking level / effort (Options).** A tap works the focused agent's own reasoning control, in its own terms; the agent kind comes from Omaherd. omp and pi: Shift+Tab, the next thinking level. Claude Code calls it effort and has no key for it, so the tap stashes your draft (Ctrl+S), opens `/effort`'s slider, and the draft comes back afterwards: move it with the left stick, ✕ confirms, ○ cancels. Configurable per agent in `[agents]`. Outside an agent window, and on a hold, Options opens the Omarchy menu.
 - **Agent status ([Omaherd](https://github.com/salemsayed/omaherd)).** The lightbar shows the most urgent agent: blinking red = waiting for you, blinking yellow = done, soft breathing = working. The five player LEDs count waiting agents. When an agent starts waiting you get a buzz and a beacon sound. The PS button jumps to the most urgent agent; press again within 4 s to cycle to the next one.
 - **Sound effects.** A blaster "pew" when you send a prompt (✕ in an agent window, or an R2 shot), a power-up chirp on a thinking-level change, a beacon when an agent calls. All synthesized; swap any of them for your own file in `[sounds]`. L3 → PS One Shot switches them on and off (`sounds:toggle`) and sets their volume (Effects +/−, `sounds:louder`/`sounds:quieter`), both remembered across restarts. They play on the controller's own speaker, wired or over Bluetooth. Linux has no sound device for the controller over Bluetooth, so there PS One Shot sends the sound to it itself, inside the controller's own HID reports. Adaptive triggers and rumble keep working through it.
 
@@ -91,7 +91,7 @@ L3 opens your favorites, R3 opens agents, holding the mic button opens voice. Pi
 | L2 | erase dictation: soft = last phrase, full = all since Enter | | | |
 | R2 | talk (hold lightly) / send (pull through the click) | | | talk / send |
 | L3 / R3 | Favorites radial / Agents radial (on release); hold (Omarchy): new agent / clipboard history | | reset system text / window zoom | |
-| Options | thinking level in an agent (tap) / Omarchy menu (hold) | System menu | | |
+| Options | thinking level in an agent, effort in Claude Code (tap) / Omarchy menu (hold) | System menu | | |
 | Create | cheat sheet (tap) / Omarchy keybindings (hold); held with ☰: theme menu, □: background switcher, D-pad →: next background | | | |
 | Touchpad press | left click (two fingers: right click) | | | |
 | PS | jump to waiting agent (tap) / pause (hold) | | | |
@@ -177,7 +177,7 @@ click_zone = [3, 5]                                        # earlier, lighter cl
 click_strength = 4
 
 [agents]
-thinking = { omp = "shift+tab", claude = "alt+t", codex = "" }
+thinking = { omp = "shift+tab", claude = "ctrl+s slash e f f o r t enter", codex = "" }
 
 [sounds]
 summon = "~/sounds/r2d2.wav"                               # any file pw-play can read; "" = silent

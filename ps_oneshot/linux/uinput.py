@@ -131,8 +131,16 @@ class UInputDevice:
             self.fd = -1
 
 
+KEYBOARD_NAME = "ps-oneshot keyboard"
+
+
+def hyprland_device_name(name: str) -> str:
+    """How Hyprland lists an input device: lower case, spaces as dashes."""
+    return name.lower().replace(" ", "-")
+
+
 class VirtualKeyboard:
-    def __init__(self, name: str = "ps-oneshot keyboard") -> None:
+    def __init__(self, name: str = KEYBOARD_NAME) -> None:
         self._dev = UInputDevice(name, keys=sorted(set(KEY_NAMES.values())))
 
     def key(self, code: int, down: bool) -> None:

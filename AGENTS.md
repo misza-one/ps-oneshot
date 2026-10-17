@@ -26,7 +26,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
   - `wm:` portable window ops (`hypr.Hyprland.wm_payload` emits Lua `hl.dsp.*` or legacy dispatchers),
   - `dispatch:` raw dispatch,
   - `exec:` shell command via `actions.spawn` (`sh -c`),
-  - `key:` uinput key combos, space-separated (`key:shift+home backspace`). They are physical keys at US-layout positions, so symbol keys change meaning on other layouts (German `minus` types ß); prefer layout-independent keys (keypad, arrows, letters) in defaults,
+  - `key:` uinput key combos, space-separated (`key:shift+home backspace`). A combo's last key, when it's a letter, digit or US symbol name (`actions.TYPED_KEYS`) or any other xkb keysym name (`at`, `question`), is the symbol: `ActionRunner._layout` reads our virtual keyboard's layout from Hyprland (`j/devices`: layout, variant, options, `active_layout_index`), `linux.xkb.Layout` compiles it with libxkbcommon (ctypes, cached per layout) and finds the key plus Shift/AltGr that type it (German: `slash` → Shift+7, `ctrl+z` → Ctrl + the Y key). Everything else (enter, arrows, F-keys, keypad, modifiers) stays a position. Without libxkbcommon or Hyprland's answer it falls back to US positions. The IPC call happens only for combos that end in a symbol, so stick repeats don't pay for it,
   - App builtins registered in `App.__init__`: `radial`, `herd`, `ui`, `app`, `dictation`, `sounds`, `rumble`, `agent`, `touchpad`, `zoom`, `text`, `couch`, `brightness`, `launch`.
   - `launch:<desktop id>` (`apps.launch`): focus the app's most recent window (`Hyprland.focus_window`), else run `[apps] launch` (Omarchy: `uwsm-app -- {id}`). `apps.DesktopApp.owns` matches a window class to an entry by StartupWMClass, desktop id, or a Chromium web app's URL host (`chrome-<host>__-Default`).
 - **Couch mode** (`couch.CouchMode`): `enter` re-applies the monitor rule with a bigger scale (`hypr.monitor_fields` copies mode, position, colour settings; `clean_scale` rounds to a scale Hyprland accepts) and takes `[couch] bar_hide` widgets out of `bar.layout` in `~/.config/omarchy/shell.json` (written byte-compatible: indent 2, key order kept, then `omarchy-shell shell reloadConfig`). `exit` puts them back at their old indexes and reloads the Hyprland config. `[couch] enter`/`exit` actions run after the change. State is `couch` = `{instance, scales}` (on only while a monitor still shows that scale) and `couch_bar` = the taken widgets, put back by `recover()` at startup if a session ended without us.
@@ -57,7 +57,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 | Path | Purpose |
 |---|---|
 | `ps_oneshot/` | daemon: `app.py` wiring and input state machine, config, actions, feature modules |
-| `ps_oneshot/linux/` | ctypes evdev/uinput, DualSense sysfs discovery, HID output reports (no python-evdev) |
+| `ps_oneshot/linux/` | ctypes evdev/uinput, DualSense sysfs discovery, HID output reports (no python-evdev), libxkbcommon layouts (`xkb.py`) |
 | `ps_oneshot/ui/` | GTK 4 layer-shell overlays, Omarchy theme loading, `demo.py` |
 | `ps_oneshot/defaults/` | `base.toml` (generic Hyprland, plus the grammar docs in its header), `omarchy.toml` (Omarchy overlay) |
 | `tests/` | stdlib unittest, pure logic |
@@ -68,7 +68,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 ## Development Commands
 
 ```sh
-python -m unittest discover -s tests                   # full suite: 97 tests, well under a second
+python -m unittest discover -s tests                   # full suite: 107 tests, well under a second
 python -m unittest discover -s tests -k vibration      # by name pattern
 python -m unittest tests.test_core.ConfigTest          # module/class/method (works without tests/__init__.py)
 ruff check --select F,E9 ps_oneshot tests tools        # lint used in practice; pyproject has no ruff config

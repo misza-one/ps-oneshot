@@ -46,7 +46,7 @@ bar_hide = [
 create = "style"  # Create held + a button: Omarchy's look (a short press is still the cheat sheet)
 
 [bindings.normal]
-options = { tap = "agent:thinking", hold = "exec:omarchy-menu toggle", desc = "Agent: next thinking level / hold: Omarchy menu" }
+options = { tap = "agent:thinking", hold = "exec:omarchy-menu toggle", desc = "Agent: thinking level / Claude: effort / hold: Omarchy menu" }
 create = { tap = "ui:cheatsheet", hold = "exec:omarchy-menu-keybindings", desc = "Cheat sheet / hold: Omarchy keybindings (Super+K)" }
 r2 = { press = "exec:voxtype record start", release = "exec:voxtype record stop", full = "dictation:shoot", light = "recording", desc = "Talk (hold) / pull through: send (quick pull: Enter)" }
 mic = { tap = "exec:omarchy-audio-input-mute", hold = "radial:voice", desc = "Mute mic / hold: language + devices" }

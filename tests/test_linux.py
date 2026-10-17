@@ -9,7 +9,8 @@ import unittest
 import zlib
 from array import array
 
-from ps_oneshot.linux import evdev, opus
+from ps_oneshot.actions import needs_layout, parse_combo
+from ps_oneshot.linux import evdev, opus, xkb
 from ps_oneshot.linux.dualsense import (
     BT_AUDIO_FRAME_BYTES,
     BT_AUDIO_FRAME_SAMPLES,
@@ -450,6 +451,46 @@ class ConstantsTest(unittest.TestCase):
     def test_ff_effect_layout(self) -> None:
         self.assertEqual(ctypes.sizeof(evdev.FFEffect), 48 if ctypes.sizeof(ctypes.c_void_p) == 8 else 44)
         self.assertEqual(evdev.FFEffect.u.offset, 16 if ctypes.sizeof(ctypes.c_void_p) == 8 else 14)
+
+
+@unittest.skipUnless(xkb.available(), "needs libxkbcommon")
+class KeyboardLayoutTest(unittest.TestCase):
+    names = evdev.KEY_NAMES
+
+    def test_symbols_follow_the_layout(self) -> None:
+        de = xkb.Layout("de")
+        k = self.names
+        self.assertEqual(parse_combo("slash", k, de), [k["leftshift"], k["7"]])
+        self.assertEqual(parse_combo("minus", k, de), [k["slash"]])
+        self.assertEqual(parse_combo("ctrl+z", k, de), [k["leftctrl"], k["y"]])  # undo, not redo
+        self.assertEqual(parse_combo("at", k, de), [k["rightalt"], k["q"]])
+        self.assertEqual(parse_combo("shift+slash", k, de), [k["leftshift"], k["7"]])  # shift only once
+
+    def test_positions_stay_put(self) -> None:
+        de, k = xkb.Layout("de"), self.names
+        for combo in ("enter", "shift+home", "kpslash", "ctrl+backspace", "f5"):
+            self.assertEqual(parse_combo(combo, k, de), parse_combo(combo, k))
+
+    def test_us_layout_and_no_layout_agree(self) -> None:
+        us, k = xkb.Layout("us"), self.names
+        for combo in ("slash", "ctrl+z", "ctrl+s", "equal", "leftbrace", "1"):
+            self.assertEqual(parse_combo(combo, k, us), parse_combo(combo, k))
+
+    def test_second_layout_of_a_keymap(self) -> None:
+        both, k = xkb.Layout("us,de", index=1), self.names
+        self.assertEqual(parse_combo("y", k, both), [k["z"]])
+
+    def test_needs_layout_only_for_symbols(self) -> None:
+        self.assertFalse(needs_layout(["up"], self.names))
+        self.assertFalse(needs_layout(["shift+home", "backspace"], self.names))
+        self.assertTrue(needs_layout(["ctrl+s", "enter"], self.names))
+        self.assertTrue(needs_layout(["question"], self.names))
+
+    def test_unknown_names_still_fail(self) -> None:
+        with self.assertRaises(ValueError):
+            parse_combo("nosuchkey", self.names, xkb.Layout("us"))
+        with self.assertRaises(ValueError):
+            parse_combo("hyper+a", self.names, xkb.Layout("us"))
 
 
 if __name__ == "__main__":

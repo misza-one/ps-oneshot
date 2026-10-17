@@ -9,13 +9,17 @@
 #   dispatch:<expr>    raw `hyprctl dispatch` payload
 #   exec:<command>     shell command, detached
 #   key:<combos>       virtual keyboard; space-separated sequence, e.g. key:ctrl+shift+tab or key:shift+home backspace
+#                      Letters, digits and symbols follow your keyboard layout: key:slash types / and
+#                      key:ctrl+z undoes on a German layout too. Any xkb keysym name works (key:at, key:question).
+#                      Other keys (enter, arrows, F-keys, keypad) are positions.
 #   radial:<name>      open the radial menu [radial.<name>]
 #   herd:jump          focus the most urgent agent (repeat to cycle)
 #   dictation:back     erase the last dictation in this window (none left: erase a word)
 #   dictation:clear    erase every dictation since the last Enter (none left: erase the line)
 #   dictation:shoot    stop dictating, then press Enter once the text is typed; plays sounds.submit.
 #                      Pulled quicker than voxtype.quick_shot (nothing said): just Enter.
-#   agent:thinking     next thinking level in the focused agent ([agents] keys per agent kind)
+#   agent:thinking     the focused agent's reasoning control: next thinking level, or Claude Code's effort
+#                      slider ([agents] keys per agent kind)
 #   touchpad:slower    touchpad pointer speed down / touchpad:faster up (remembered)
 #   ui:cheatsheet      toggle the cheat sheet (hidden on release when bound to press/hold)
 #   app:pause          toggle pause (game mode)
@@ -215,9 +219,12 @@ set_input = "wpctl set-default {id}"
 # only act there.
 window_classes = '^(foot|kitty|Alacritty|com\.mitchellh\.ghostty|org\.wezfurlong\.wezterm)$'
 window_titles = '^[^\s:]+: \S'  # '' = any title
-# Each agent CLI's key for its thinking level; the kind comes from Omaherd (the agent in the
+# Each agent CLI's keys for its reasoning control; the kind comes from Omaherd (the agent in the
 # focused herdr pane). Kinds not listed get thinking_default ("" = do nothing).
-thinking = { omp = "shift+tab", pi = "shift+tab", claude = "alt+t" }
+# omp and pi cycle their thinking level with Shift+Tab. Claude Code calls it effort and has no key
+# for it (Alt+T only toggles thinking, which current models refuse), so: Ctrl+S stashes the draft,
+# /effort opens the slider (the left stick moves it, ✕ confirms, ○ cancels), and the draft comes back.
+thinking = { omp = "shift+tab", pi = "shift+tab", claude = "ctrl+s slash e f f o r t enter" }
 thinking_default = ""
 thinking_elsewhere = ""        # action when the focused window isn't an agent window
 
@@ -255,7 +262,7 @@ l3 = "radial:apps"
 r3 = "radial:herd"
 ps = { tap = "herd:jump", hold = "app:pause", desc = "Jump to waiting agent / hold: pause" }
 create = { tap = "ui:cheatsheet", desc = "Cheat sheet (○ or Create again closes it)" }
-options = { tap = "agent:thinking", desc = "Agent: next thinking level" }
+options = { tap = "agent:thinking", desc = "Agent: thinking level / Claude: effort" }
 mic = { tap = "exec:wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle", hold = "radial:voice", desc = "Mute mic / hold: language + devices" }
 
 [bindings.window]

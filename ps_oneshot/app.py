@@ -29,7 +29,7 @@ from .herd import Agent, HerdProvider, agent_in_window, top_status, transitions,
 from .hypr import EventStream, Hyprland  # noqa: E402
 from .linux import dualsense  # noqa: E402
 from .linux.evdev import KEY_NAMES, list_event_nodes  # noqa: E402
-from .linux.uinput import VirtualKeyboard, VirtualPointer  # noqa: E402
+from .linux.uinput import KEYBOARD_NAME, VirtualKeyboard, VirtualPointer, hyprland_device_name  # noqa: E402
 from .labels import cheatsheet_sections  # noqa: E402
 from .menus import Hooks, RadialMenus  # noqa: E402
 from .pad import Pad  # noqa: E402
@@ -99,6 +99,7 @@ class App:
                 "brightness": self._brightness_action,
                 "launch": lambda app_id: apps.launch(self.hypr, app_id, cfg.get("apps", "launch")),
             },
+            keyboard=hyprland_device_name(KEYBOARD_NAME),
         )
         theme = load_theme()
         accent = theme.accent
