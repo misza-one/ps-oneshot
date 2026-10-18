@@ -115,10 +115,29 @@ class LightsTest(unittest.TestCase):
             (lights.LightInputs(herd_status="blocked", battery_low=True), cfg["blocked"]),
             (lights.LightInputs(herd_status="done", battery_low=True), cfg["done"]),
             (lights.LightInputs(herd_status="working", battery_low=True), cfg["battery_low"]),
-            (lights.LightInputs(herd_status="working"), [1, 2, 3]),
+            (lights.LightInputs(herd_status="working"), list(lights.vivid((1, 2, 3)))),
         ]
         for inputs, expected in cases:
             self.assertEqual(list(self.engine.frame(inputs, 0.0).rgb), list(expected), inputs)
+
+    def test_screen_colours_go_out_vivid_and_configured_ones_as_written(self):
+        self.assertEqual(lights.vivid((250, 169, 104)), (255, 114, 0))  # retro-82's peach accent → ff7200
+        self.assertEqual(lights.vivid((128, 128, 128)), (255, 255, 255))  # no hue: stays neutral
+        cfg = config._default("base")["lights"]
+        engine = lights.LightEngine(cfg, (250, 169, 104))
+        self.assertEqual(engine.frame(lights.LightInputs(), 0.0).rgb, (255, 114, 0))
+        self.assertEqual(list(engine.frame(lights.LightInputs(herd_status="blocked"), 0.0).rgb), cfg["blocked"])
+        as_on_screen = lights.LightEngine({**cfg, "vivid": False}, (250, 169, 104))
+        self.assertEqual(as_on_screen.frame(lights.LightInputs(), 0.0).rgb, (250, 169, 104))
+
+    def test_player_leds_count_waiting_or_scan_while_agents_work(self):
+        waiting = self.engine.frame(lights.LightInputs(herd_status="blocked", waiting=2), 0.0)
+        self.assertEqual(waiting.player_mask, lights.player_mask(2))
+        step = lights.BREATH_PERIOD_S / len(lights.SCANNER)
+        masks = [self.engine.frame(lights.LightInputs(herd_status="working"), step * (i + 0.5)) for i in range(8)]
+        self.assertEqual([f.player_mask for f in masks], [1, 2, 4, 8, 16, 8, 4, 2])
+        self.assertTrue(all(f.animated for f in masks))
+        self.assertEqual(self.engine.frame(lights.LightInputs(), 0.0).player_mask, 0)
 
     def test_paused_leaves_leds_alone(self):
         self.assertIsNone(self.engine.frame(lights.LightInputs(paused=True, herd_status="blocked"), 0.0))

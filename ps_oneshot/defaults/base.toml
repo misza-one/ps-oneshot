@@ -111,13 +111,16 @@ namespaces = '^(omarchy-menu|rofi|wofi|walker|fuzzel|anyrun|launcher)$'
 [lights]
 enabled = true
 brightness = 1.0
-idle_brightness = 0.12
+idle_brightness = 0.12   # idle shows the theme's accent this dim; working breathes it up to 0.4
+vivid = true             # the accent and agent colours at their hue's full colour, as RGB-sync tools light a PC
+                         # (#faa968 → ff7200); false = as on screen (dimmed pastels turn bluish on the LEDs)
+scanner = true           # player LEDs: one runs back and forth while agents work and none waits
 recording = [255, 0, 0]  # push-to-talk active
 recording_pulse = 0.8    # seconds per pulse (faster than the agent alerts); 0 = solid
 blocked = [220, 68, 68]
 done = [232, 196, 64]
-alert_style = "blink"    # agent alerts: blink (hard on/off) | breathe
-blink_period = 1.0       # seconds per on/off cycle
+alert_style = "alternate"  # agent alerts: alternate (alert colour, then the agent's) | blink (then dark) | breathe
+blink_period = 1.0       # seconds per cycle: half the alert's colour, half the agent's (or dark)
 battery_low = [255, 110, 0]
 paused = [20, 40, 140]
 

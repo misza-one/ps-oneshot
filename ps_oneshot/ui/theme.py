@@ -5,8 +5,11 @@ from __future__ import annotations
 import logging
 import os
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+from gi.repository import Gio
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +85,23 @@ def load_theme() -> Theme:
             continue
         return _with_shell(theme, path.with_name("shell.toml"), font)
     return replace(FALLBACK, font=font)
+
+
+def watch_theme(on_change: Callable[[], None]) -> Gio.FileMonitor | None:
+    """Call `on_change` after every `omarchy theme set`. It swaps the theme directory in, then writes
+    theme.name next to it; the overlays reload the theme each time they open, but the lightbar needs telling."""
+    directory = _THEME_FILES[0].expanduser().parent.parent
+    if not directory.is_dir():
+        return None
+
+    def changed(_monitor: Gio.FileMonitor, file: Gio.File, _other: Gio.File | None,
+                event: Gio.FileMonitorEvent) -> None:
+        if event == Gio.FileMonitorEvent.CHANGES_DONE_HINT and file.get_basename() == "theme.name":
+            on_change()
+
+    monitor = Gio.File.new_for_path(str(directory)).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
+    monitor.connect("changed", changed)
+    return monitor
 
 
 def _with_shell(theme: Theme, path: Path, font: str) -> Theme:

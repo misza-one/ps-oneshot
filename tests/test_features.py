@@ -236,6 +236,21 @@ class AlertBlinkTest(unittest.TestCase):
         self.assertEqual(list(recording.rgb), cfg["recording"])
         self.assertGreater(recording.brightness, 0.0)
 
+    def test_alert_alternates_with_the_waiting_agents_colour(self):
+        cfg = config._default("base")["lights"]
+        engine = lights.LightEngine(cfg, (1, 2, 3))
+        claude = (224, 145, 90)
+        waiting = lights.LightInputs(herd_status="blocked", alert_rgb=claude)
+        period = cfg["blink_period"]
+        first, second = engine.frame(waiting, period * 0.1), engine.frame(waiting, period * 0.6)
+        self.assertEqual(list(first.rgb), cfg["blocked"])
+        self.assertEqual((second.rgb, second.brightness), (lights.vivid(claude), cfg["brightness"]))
+        # An agent coloured like its alert (Kimi's yellow, done) would look solid: dark instead.
+        kimi = lights.LightInputs(herd_status="done", alert_rgb=(253, 224, 71))
+        self.assertEqual(engine.frame(kimi, period * 0.6).brightness, 0.0)
+        blink = lights.LightEngine({**cfg, "alert_style": "blink"}, (1, 2, 3))
+        self.assertEqual(blink.frame(waiting, period * 0.6).brightness, 0.0)
+
 
 class RadialRowsTest(unittest.TestCase):
     def test_plain_items_share_a_row_and_submenus_get_their_own(self):

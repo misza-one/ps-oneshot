@@ -40,7 +40,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
   - `dictation.CaptureWatcher`: VoxType `post_process` tee file → `DictationLog`, used for L2 undo.
   - VoxType state file: an R2 "shot" presses Enter only once it reads `idle`.
 - **Outputs**
-  - `lights.LightEngine.frame` drives the sysfs LED-class lightbar and player LEDs, plus evdev FF rumble. `App.refresh_lights` holds the LED writes while `Controller.rumbling` (they would stop our rumble, see the HID invariant) and keeps ticking until it's over.
+  - `lights.LightEngine.frame` drives the sysfs LED-class lightbar and player LEDs, plus evdev FF rumble. Idle and working show the theme accent (`App._accent_rgb`, re-read on `omarchy theme set` through `ui.theme.watch_theme`); a blocked/done alert alternates its colour with the kind colour of the agent PS jumps to (`LightInputs.alert_rgb`, `alert_style = "alternate"`), or goes dark when their hues are too close (`lights.look_alike`). Colours from screen palettes (accent, agent kinds) go through `lights.vivid` (hue at full saturation and value, `[lights] vivid`); configured colours go out as written. Player LEDs: the waiting count from the centre, or `scanner_mask` (one LED bouncing, one sweep per `BREATH_PERIOD_S`) while agents work and none waits. They are on/off only (`max_brightness` 1). `App.refresh_lights` holds the LED writes while `Controller.rumbling` (they would stop our rumble, see the HID invariant) and keeps ticking until it's over.
   - Trigger effects and the mic mute (LED + the built-in mic's hardware mute, `power_save_control`) go out as hidraw output reports (`dualsense.build_output_report`). The kernel toggles that mute on every mic-button press; `App._sync_mic_mute` puts it back to the system mic state.
   - Overlays: `ui.radial.RadialMenu`, `ui.carousel.Carousel` and `ui.cheatsheet.CheatSheet`. They open with their own animation: Hyprland's layer animation is off for the `ps-oneshot` namespace (`Hyprland.no_layer_animation`, set at startup and again on `configreloaded`, which drops the rule).
   - Sounds: `App._play_sound`. Wired, `sounds.play` runs `pw-play` (to the controller's sound card when it has one). Over Bluetooth, `sounds.BluetoothSpeaker`: samples at 45 kHz (`dualsense.BT_AUDIO_RATE`), Opus CBR frames of 200 bytes via `linux.opus` (ctypes libopus, optional), cached per sound and volume; a worker thread sends a speaker-routing 0x31 (`build_output_report(speaker=…, keep_rumble=True)`), then one `build_audio_report` (0x36) every 512/48000 s. A newer sound cuts off the playing one. `[sounds] volume` steps at runtime with `sounds:louder|quieter` (Effects +/− in the settings ring, whose hub shows the level through `Choice.detail`).
@@ -70,7 +70,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 ## Development Commands
 
 ```sh
-python -m unittest discover -s tests                   # full suite: 114 tests, well under a second
+python -m unittest discover -s tests                   # full suite: 117 tests, well under a second
 python -m unittest discover -s tests -k vibration      # by name pattern
 python -m unittest tests.test_core.ConfigTest          # module/class/method (works without tests/__init__.py)
 ruff check --select F,E9 ps_oneshot tests tools        # lint used in practice; pyproject has no ruff config

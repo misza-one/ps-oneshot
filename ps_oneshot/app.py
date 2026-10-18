@@ -41,7 +41,7 @@ from .ui.carousel import Carousel  # noqa: E402
 from .ui.cheatsheet import CheatSheet  # noqa: E402
 from .ui.overlay import NAMESPACE as OVERLAY_NAMESPACE  # noqa: E402
 from .ui.radial import RadialMenu  # noqa: E402
-from .ui.theme import load_theme  # noqa: E402
+from .ui.theme import load_theme, watch_theme  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -104,10 +104,8 @@ class App:
             },
             keyboard=hyprland_device_name(KEYBOARD_NAME),
         )
-        theme = load_theme()
-        accent = theme.accent
-        idle_rgb = (int(accent[0] * 255), int(accent[1] * 255), int(accent[2] * 255))
-        self.lights = fx.LightEngine(cfg.section("lights"), idle_rgb)
+        self.lights = fx.LightEngine(cfg.section("lights"), _accent_rgb())
+        self._theme_monitor = watch_theme(self._on_theme_set)
         self.cheatsheet = CheatSheet(load_theme)
         self.events = EventStream(self.hypr.events_path, self._on_hypr_event)
         herd_cfg = cfg.section("herd")
@@ -215,6 +213,8 @@ class App:
             self.capture.close()
         if self.foot is not None:
             self.foot.close()
+        if self._theme_monitor is not None:
+            self._theme_monitor.cancel()
         for device in (self.keyboard, self.pointer):
             if device is not None:
                 device.close()
@@ -965,13 +965,19 @@ class App:
         recording = any(h.binding and h.binding.light == "recording" for h in self.held.values()) or any(
             p.binding.light == "recording" for p in self.trigger_presses.values()
         )
+        queue = waiting_queue(agents)
         return fx.LightInputs(
             recording=recording,
             herd_status=top_status(agents),
-            waiting=sum(1 for agent in agents if agent.waiting),
+            alert_rgb=queue[0].color if queue else None,  # the agent PS jumps to
+            waiting=len(queue),
             battery_low=self.battery_low,
             paused=self.paused,
         )
+
+    def _on_theme_set(self) -> None:
+        self.lights.idle_rgb = _accent_rgb()
+        self.refresh_lights()
 
     def refresh_lights(self) -> bool:
         frame = self.lights.frame(self._light_inputs(), time.monotonic())
@@ -1038,6 +1044,12 @@ class App:
             if capacity is not None:
                 levels.append((capacity, status.lower() == "charging"))
         return min(levels, default=None)
+
+
+def _accent_rgb() -> tuple[int, int, int]:
+    """The theme's accent: the lightbar's idle and working colour."""
+    r, g, b = load_theme().accent
+    return round(r * 255), round(g * 255), round(b * 255)
 
 
 def _voxtype_suffix() -> str:

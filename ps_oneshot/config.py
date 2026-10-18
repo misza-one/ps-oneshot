@@ -218,8 +218,8 @@ def build(raw: dict[str, Any], preset: str, sources: list[str]) -> Config:
         raise ConfigError("touchpad.mode: expected mouse | system")
     if raw["touchpad"]["click"] not in ("mouse", "button"):
         raise ConfigError("touchpad.click: expected mouse | button")
-    if raw["lights"]["alert_style"] not in ("blink", "breathe"):
-        raise ConfigError("lights.alert_style: expected blink | breathe")
+    if raw["lights"]["alert_style"] not in ("alternate", "blink", "breathe"):
+        raise ConfigError("lights.alert_style: expected alternate | blink | breathe")
     if raw["sounds"]["device"] not in ("auto", "controller", "system"):
         raise ConfigError("sounds.device: expected auto | controller | system")
     _regex("dictation.terminal_classes", raw["dictation"]["terminal_classes"])
