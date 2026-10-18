@@ -59,6 +59,7 @@ class Hooks:
     monitor: Callable[[], str | None]
     capture_sticks: Callable[[bool], None]
     settings: Callable[[], list[Choice]]  # the app's own toggles for the "settings" source
+    lights: Callable[[], list[Choice]]  # the "lights" source: the lightbar's settings
     window_class: Callable[[], str]  # the focused window's, for pinning it as a favorite
     paused: Callable[[], bool]
     battery: Callable[[], tuple[int, bool] | None]  # (percent, charging) of the controller, for the overlay's corner
@@ -176,6 +177,8 @@ class RadialMenus:
             return title, self._choice_slices(choices[:MAX_SLICES])
         if source == "settings":
             return title, self._choice_slices(self.hooks.settings()[:MAX_SLICES])
+        if source == "lights":
+            return title, self._choice_slices(self.hooks.lights()[:MAX_SLICES])
         if source == "favorites":
             return title, self._favorite_slices()
         raise ValueError(f"unknown radial source {source!r}")
@@ -197,6 +200,7 @@ class RadialMenus:
             Slice(
                 item=RadialItem(label=c.label, icon=c.icon, sublabel=c.sublabel, detail=c.detail, active=c.active),
                 action=c.action,
+                source=c.source or None,
                 keep_open=c.keep_open,
             )
             for c in choices

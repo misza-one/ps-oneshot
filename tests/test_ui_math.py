@@ -12,6 +12,8 @@ from ps_oneshot import agentcards, agentpicker, config
 from ps_oneshot.agentcarousel import AgentCarousel, CarouselHooks
 from ps_oneshot.control import ControlServer, send
 from ps_oneshot.herd import Agent
+from ps_oneshot.menus import RadialMenus
+from ps_oneshot.sources import Choice
 from ps_oneshot.ui.theme import FALLBACK
 from ps_oneshot.ui.radial import GroupSpan, _row_width, group_spans, marquee_offset, slice_for_vector
 
@@ -312,5 +314,21 @@ class ControlSocketTest(unittest.TestCase):
             self.assertIsNone(send("herd:pick", path))
 
 
+class ChoiceSubmenuTest(unittest.TestCase):
+    def test_a_choice_with_a_source_opens_it_as_a_submenu(self) -> None:
+        lightbar, toggle = RadialMenus._choice_slices([
+            Choice(label="Lightbar", action="", source="lights"),
+            Choice(label="Sounds", action="sounds:toggle", keep_open=True),
+        ])
+        self.assertEqual((lightbar.source, lightbar.action), ("lights", ""))
+        self.assertEqual((toggle.source, toggle.action, toggle.keep_open), (None, "sounds:toggle", True))
+
+    def test_a_ring_can_use_the_lights_source(self) -> None:
+        base = config._default("base")
+        config.build(config.deep_merge(base, {"radial": {"x": {"items": [{"label": "L", "source": "lights"}]}}}),
+                     "hyprland", [])
+
+
 if __name__ == "__main__":
     unittest.main()
+

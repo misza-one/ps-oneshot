@@ -27,7 +27,9 @@ from .control import ControlServer  # noqa: E402
 from .couch import CouchMode  # noqa: E402
 from .dictation import CaptureWatcher, DictationLog, capture_path  # noqa: E402
 from .favorites import Favorites  # noqa: E402
-from .herd import Agent, HerdProvider, agent_in_window, top_status, transitions, waiting_queue  # noqa: E402
+from .herd import (  # noqa: E402
+    KIND_COLORS, Agent, HerdProvider, agent_in_window, top_status, transitions, waiting_queue,
+)
 from .hypr import EventStream, Hyprland  # noqa: E402
 from .linux import dualsense  # noqa: E402
 from .linux.evdev import KEY_NAMES, list_event_nodes  # noqa: E402
@@ -51,6 +53,7 @@ SHOT_POLL_MS = 40  # how often a shot checks whether VoxType has finished typing
 SHOT_SETTLE_MS = 120  # pause between the last typed character and Enter
 SHOT_KICK_MS = 160  # how long the trigger itself buzzes after a shot
 CABLE_SWITCH_S = 15.0  # moving a controller from Bluetooth onto its cable gives up after this long
+ALERT_PREVIEW_S = 3.0  # picking an alert style in the Lightbar ring plays it this long
 KEY_ENTER = KEY_NAMES["enter"]
 KEY_BACKSPACE = KEY_NAMES["backspace"]
 VirtualT = TypeVar("VirtualT", VirtualKeyboard, VirtualPointer)
@@ -99,12 +102,14 @@ class App:
                 "app": self._app_action, "dictation": self._dictation_action, "sounds": self._sounds_action,
                 "rumble": self._rumble_action, "agent": self._agent_action, "touchpad": self._touchpad_action,
                 "zoom": self._zoom_action, "text": self._text_action, "couch": self._couch_action,
-                "brightness": self._brightness_action,
+                "brightness": self._brightness_action, "lights": self._lights_action,
                 "launch": lambda app_id: apps.launch(self.hypr, app_id, cfg.get("apps", "launch")),
             },
             keyboard=hyprland_device_name(KEYBOARD_NAME),
         )
+        fx.restore_settings(cfg.raw["lights"], sounds.load_state("lights", {}))
         self.lights = fx.LightEngine(cfg.section("lights"), _accent_rgb())
+        self._alert_preview_until = 0.0
         self._theme_monitor = watch_theme(self._on_theme_set)
         self.cheatsheet = CheatSheet(load_theme)
         self.events = EventStream(self.hypr.events_path, self._on_hypr_event)
@@ -113,7 +118,7 @@ class App:
         self.favorites = Favorites(cfg.section("favorites"))
         self.menus = RadialMenus(cfg, RadialMenu(load_theme), self.herd, self.favorites, Hooks(
             run_action=self.actions.run, rumble=self.rumble, monitor=lambda: self.monitor,
-            capture_sticks=self._sync_stick_capture, settings=self._settings_choices,
+            capture_sticks=self._sync_stick_capture, settings=self._settings_choices, lights=self._lights_choices,
             window_class=lambda: self.window_class, paused=lambda: self.paused, battery=self._battery_level,
         ))
         self.carousel = AgentCarousel(cfg, Carousel(load_theme), self.herd, CarouselHooks(
@@ -852,7 +857,8 @@ class App:
     def _settings_choices(self) -> list[Choice]:
         """The "settings" radial source: PS One Shot's own switches. Ring order is clockwise from the top:
         couch mode on top, toggles upper left/right, mouse speed and effects volume down on the left / up on
-        the right, then pause and the cheat sheet at the bottom. Steppers show their level in the hub."""
+        the right, then pause and the Lightbar submenu either side of the cheat sheet at the bottom. Steppers
+        show their level in the hub."""
         speed = f"speed {self.cfg.raw['touchpad']['sensitivity']:.2f}"
         volume = f"volume {self.cfg.get('sounds', 'volume'):.0%}"
         couch = self.couch.active
@@ -866,11 +872,61 @@ class App:
             Choice(label="Effects +", icon="\U000f075d", action="sounds:louder", detail=volume, keep_open=True),
             Choice(label="Pause", icon="\uf04c", action="app:pause", detail="hold PS to resume"),
             Choice(label="Cheat sheet", icon="\uf11c", action="ui:cheatsheet"),
+            Choice(label="Lightbar", icon="\U000f06e8", action="", source="lights", detail="colours, alerts, glow"),
             Choice(label="Effects −", icon="\U000f075e", action="sounds:quieter", detail=volume, keep_open=True),
             Choice(label="Mouse −", icon="\uf068", action="touchpad:slower", detail=speed, keep_open=True),
             Choice(label="Sounds", icon="\uf028" if self.sounds_on else "\uf026", action="sounds:toggle",
                    sublabel="on" if self.sounds_on else "off", active=self.sounds_on, keep_open=True),
         ]
+
+    def _lights_choices(self) -> list[Choice]:
+        """The "lights" radial source (Lightbar). Clockwise from the top: colours, the alert style, brightness
+        and idle glow up on the right and down on the left, the running light. Every change shows on the
+        lightbar right away; picking an alert style plays it."""
+        cfg = self.cfg.raw["lights"]
+        vivid, scanner = bool(cfg["vivid"]), bool(cfg["scanner"])
+        brightness = f"brightness {cfg['brightness']:.0%}"
+        idle = float(cfg["idle_brightness"])
+        glow = f"idle glow {idle:.0%}" if idle > 0 else "idle glow off"
+        return [
+            Choice(label="Colours", icon="\U000f03d8", action="lights:vivid", sublabel="vivid" if vivid else "as theme",
+                   active=vivid, keep_open=True,
+                   detail="theme colours at full strength" if vivid else "theme colours as on screen"),
+            Choice(label="Alerts", icon="\uf0f3", action="lights:alert", sublabel=cfg["alert_style"], keep_open=True,
+                   detail="✕ next style, played on the lightbar"),
+            Choice(label="Brighter", icon="\U000f00e0", action="lights:brighter", detail=brightness, keep_open=True),
+            Choice(label="Glow +", icon="\U000f0335", action="lights:glow_up", detail=glow, keep_open=True),
+            Choice(label="Glow −", icon="\U000f0336", action="lights:glow_down", detail=glow, keep_open=True),
+            Choice(label="Dimmer", icon="\U000f00de", action="lights:dimmer", detail=brightness, keep_open=True),
+            Choice(label="Running light", icon="\U000f01d8", action="lights:scanner",
+                   sublabel="on" if scanner else "off", active=scanner, keep_open=True,
+                   detail="player LEDs while agents work"),
+        ]
+
+    def _lights_action(self, arg: str) -> None:
+        """The Lightbar ring's switches and steppers over [lights]; each change is remembered."""
+        cfg = self.cfg.raw["lights"]
+        if arg in ("vivid", "scanner"):
+            key, value = arg, not cfg[arg]
+        elif arg == "alert":
+            key = "alert_style"
+            styles = fx.ALERT_STYLES
+            value = styles[(styles.index(cfg[key]) + 1) % len(styles)] if cfg[key] in styles else styles[0]
+            self._alert_preview_until = time.monotonic() + ALERT_PREVIEW_S
+        elif arg in ("brighter", "dimmer", "glow_up", "glow_down"):
+            key = "brightness" if arg in ("brighter", "dimmer") else "idle_brightness"
+            stops = fx.BRIGHTNESS_STOPS if key == "brightness" else fx.IDLE_STOPS
+            value = next_stop(list(stops), float(cfg[key]), 1 if arg in ("brighter", "glow_up") else -1)
+            if value is None:
+                self.rumble(fx.RUMBLE_NOTHING)  # already at the end of the range
+                return
+        else:
+            log.warning("unknown lights action %r", arg)
+            return
+        cfg[key] = value
+        saved = sounds.load_state("lights", {})
+        sounds.save_state("lights", {**(saved if isinstance(saved, dict) else {}), key: value})
+        self.refresh_lights()
 
     def _app_action(self, arg: str) -> None:
         if arg != "pause":
@@ -966,10 +1022,14 @@ class App:
             p.binding.light == "recording" for p in self.trigger_presses.values()
         )
         queue = waiting_queue(agents)
+        status, alert_rgb = top_status(agents), queue[0].color if queue else None  # the agent PS jumps to
+        if time.monotonic() < self._alert_preview_until:  # an alert style just picked in the Lightbar ring
+            status = "blocked"
+            alert_rgb = alert_rgb or (agents[0].color if agents else KIND_COLORS["claude"])
         return fx.LightInputs(
             recording=recording,
-            herd_status=top_status(agents),
-            alert_rgb=queue[0].color if queue else None,  # the agent PS jumps to
+            herd_status=status,
+            alert_rgb=alert_rgb,
             waiting=len(queue),
             battery_low=self.battery_low,
             paused=self.paused,

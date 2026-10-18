@@ -66,7 +66,7 @@ L3 opens your favorites, R3 opens agents, holding the mic button opens voice. Pi
 
   <img src="docs/images/carousel.png" alt="The agents carousel: the selected agent's card in the middle, skewed strips with each agent's icon and project to both sides, and a row of status dots underneath">
 - **Voice** (hold the mic button) puts the dictation languages straight on the ring (the current one checked) plus a Devices submenu with every output and input; picking a device makes it the default and moves playing streams.
-- **PS One Shot** (L3) holds the app's own switches: couch mode, sound effects and vibration on/off (icon, ✓ and on/off show the current state), the effects volume and the touchpad pointer speed (Effects +/−, Mouse +/−; the level shows in the middle of the ring), the cheat sheet and pause. Sounds, vibration and the steppers keep the ring open for another press and are remembered across restarts. Vibration off silences every rumble and the shot's trigger kick; the triggers' resistance stays.
+- **PS One Shot** (L3) holds the app's own switches: couch mode, sound effects and vibration on/off (icon, ✓ and on/off show the current state), the effects volume and the touchpad pointer speed (Effects +/−, Mouse +/−; the level shows in the middle of the ring), the cheat sheet and pause, plus a **Lightbar** submenu: colours vivid or as the theme has them, the alert style (✕ steps through alternate, blink and breathe and plays it on the lightbar), brightness and idle glow +/−, and the running light on/off. Sounds, vibration, the steppers and the Lightbar settings keep the ring open for another press and are remembered across restarts. Vibration off silences every rumble and the shot's trigger kick; the triggers' resistance stays.
 
 <br clear="right">
 

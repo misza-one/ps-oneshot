@@ -15,6 +15,12 @@ BREATH_PERIOD_S = 1.9  # Omaherd's working dots
 ALTERNATE_MIN_HUE_DEG = 15
 NEUTRAL_SATURATION = 0.15  # below this a colour has no hue to speak of (white, greys)
 SCANNER = (0, 1, 2, 3, 4, 3, 2, 1)  # player LEDs left to right and back, one BREATH_PERIOD_S per sweep
+ALERT_STYLES = ("alternate", "blink", "breathe")
+# The Lightbar ring's steppers: [lights] brightness and idle_brightness.
+BRIGHTNESS_STOPS = (0.2, 0.4, 0.6, 0.8, 1.0)
+IDLE_STOPS = (0.0, 0.04, 0.08, 0.12, 0.2, 0.3)
+# What the Lightbar ring changes, remembered as state key `lights` (only the keys changed there).
+RING_SETTINGS = ("vivid", "scanner", "alert_style", "brightness", "idle_brightness")
 
 # (strong, weak, duration_ms, pause_after_ms)
 RUMBLE_BLOCKED = ((1.0, 0.6, 110, 90), (1.0, 0.6, 110, 0))
@@ -79,6 +85,22 @@ def look_alike(a: RGB, b: RGB) -> bool:
         return sa < NEUTRAL_SATURATION and sb < NEUTRAL_SATURATION
     gap = abs(ha - hb) % 1.0
     return min(gap, 1.0 - gap) * 360 < ALTERNATE_MIN_HUE_DEG
+
+
+def restore_settings(cfg: dict, saved: object) -> None:
+    """Put the settings changed in the Lightbar ring (state.json) over the config's, skipping bad values."""
+    if not isinstance(saved, dict):
+        return
+    for key in RING_SETTINGS:
+        value = saved.get(key)
+        if key in ("vivid", "scanner"):
+            ok = isinstance(value, bool)
+        elif key == "alert_style":
+            ok = value in ALERT_STYLES
+        else:
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool) and 0.0 <= value <= 1.0
+        if ok:
+            cfg[key] = value
 
 
 def player_mask(count: int) -> int:

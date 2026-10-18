@@ -139,6 +139,15 @@ class LightsTest(unittest.TestCase):
         self.assertTrue(all(f.animated for f in masks))
         self.assertEqual(self.engine.frame(lights.LightInputs(), 0.0).player_mask, 0)
 
+    def test_lightbar_ring_settings_restore_over_the_config_skipping_bad_values(self):
+        cfg = dict(config._default("base")["lights"])
+        saved = {"vivid": False, "scanner": "yes", "alert_style": "strobe", "brightness": 0.6, "idle_brightness": 7}
+        lights.restore_settings(cfg, saved)
+        self.assertEqual((cfg["vivid"], cfg["brightness"]), (False, 0.6))
+        self.assertEqual((cfg["scanner"], cfg["alert_style"], cfg["idle_brightness"]), (True, "alternate", 0.12))
+        lights.restore_settings(cfg, None)  # nothing saved yet, or a broken state file
+        self.assertEqual(cfg["brightness"], 0.6)
+
     def test_paused_leaves_leds_alone(self):
         self.assertIsNone(self.engine.frame(lights.LightInputs(paused=True, herd_status="blocked"), 0.0))
 

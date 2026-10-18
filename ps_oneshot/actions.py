@@ -117,6 +117,12 @@ def describe(action: str, radial_titles: dict[str, str]) -> str:
         return {"toggle": "Couch mode on/off", "on": "Couch mode on", "off": "Couch mode off"}.get(arg, arg)
     if kind == "brightness":
         return {"up": "Brighter", "down": "Darker"}.get(arg, arg)
+    if kind == "lights":
+        return {
+            "vivid": "Lightbar colours vivid/as on screen", "alert": "Next lightbar alert style",
+            "brighter": "Lightbar brighter", "dimmer": "Lightbar dimmer", "glow_up": "Lightbar idle glow up",
+            "glow_down": "Lightbar idle glow down", "scanner": "Running light on/off",
+        }.get(arg, arg)
     if kind == "key":
         return ", ".join(" + ".join(p.capitalize() for p in combo.split("+")) for combo in arg.split())
     if kind == "launch":

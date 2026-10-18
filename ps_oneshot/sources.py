@@ -38,6 +38,7 @@ class Choice:
     active: bool = False
     keep_open: bool = False  # radial stays open after picking it (toggles, steppers)
     detail: str = ""  # the hub's line under the name while it's selected, e.g. a stepper's level
+    source: str = ""  # opens this live source as a submenu instead of running `action`
 
 
 def _pactl_json(*args: str) -> object:
