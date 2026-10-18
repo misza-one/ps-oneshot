@@ -320,7 +320,7 @@ class ChoiceSubmenuTest(unittest.TestCase):
             Choice(label="Lightbar", action="", source="lights"),
             Choice(label="Sounds", action="sounds:toggle", keep_open=True),
         ])
-        self.assertEqual((lightbar.source, lightbar.action), ("lights", ""))
+        self.assertEqual((lightbar.source, lightbar.action, lightbar.item.detail), ("lights", "", "›"))
         self.assertEqual((toggle.source, toggle.action, toggle.keep_open), (None, "sounds:toggle", True))
 
     def test_a_ring_can_use_the_lights_source(self) -> None:

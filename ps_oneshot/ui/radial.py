@@ -32,7 +32,7 @@ MAX_ITEMS = 12
 PULSE_PERIOD = 1.9  # seconds per breath
 PULSE_FRAME_MS = 40
 POP_TIME = 0.05  # selection pop time constant, seconds
-DIAMETER = 0.46  # of the shorter monitor side
+DIAMETER = 0.54  # of the shorter monitor side, as long as the group labels beside it still fit
 TAU = 2 * math.pi
 # Group arcs, in units of the donut radius: centre line just outside the rim, then the labels.
 GROUP_ARC_RADIUS = 1.07
@@ -278,12 +278,13 @@ class RadialMenu(Overlay):
         return busy or self._hold is not None  # the hold ring fills frame by frame
 
     def _content_size(self, monitor_width: int, monitor_height: int) -> tuple[float, float]:
-        radius = DIAMETER * min(monitor_width, monitor_height) / 2
+        # Room for the selection pop, badges, group arcs and their labels beside the donut.
+        reach = GROUP_ARC_RADIUS + GROUP_ARC_WIDTH + GROUP_LABEL_GAP + GROUP_LABEL_MAX_WIDTH + 0.05
+        shorter = min(monitor_width, monitor_height)
+        radius = min(DIAMETER * shorter / 2, shorter / (2 * reach))
         if radius != self._radius:
             self._image_surfaces.clear()
         self._radius = radius
-        # Room for the selection pop, badges, group arcs and their labels beside the donut.
-        reach = GROUP_ARC_RADIUS + GROUP_ARC_WIDTH + GROUP_LABEL_GAP + GROUP_LABEL_MAX_WIDTH + 0.05
         side = self._radius * 2 * reach
         return side, side
 

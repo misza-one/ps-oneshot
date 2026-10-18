@@ -63,12 +63,12 @@
 #          lstick_up/down/left/right rstick_up/down/left/right (sticks in "buttons" mode)
 #
 # Radial items: { label, icon, action | items = [...] | source, keep_open, inline }
-#   source = "herd" | "audio" | "voxtype-language" | "settings" | "lights" | "triggers" | "sticks" | "favorites"
-#   builds the content live: a submenu, or spliced straight into the ring with inline = true. "settings" holds
-#   PS One Shot's own switches (couch mode, sounds and their volume, vibration, mouse speed, cheat sheet, pause),
-#   each showing its state, and the submenus "lights" (Lightbar: colours, alert style, brightness, idle glow,
-#   running light), "triggers" (adaptive on/off, click strength) and "sticks" (deadzone, the speed of each stick
-#   mode in use).
+#   source = "herd" | "audio" | "voxtype-language" | "settings" | "sound" | "haptics" | "sensitivity" | "lights" |
+#   "favorites" builds the content live: a submenu, or spliced straight into the ring with inline = true.
+#   "settings" holds PS One Shot's own switches: couch mode, pause, the cheat sheet, and the submenus "sound"
+#   (effects on/off, volume), "haptics" (vibration, adaptive triggers, click strength), "sensitivity" (stick
+#   deadzone, the speed of each stick mode in use, touchpad speed) and "lights" (Lightbar: colours, alert style,
+#   brightness, idle glow, running light). Each shows its state.
 #   "favorites" are the [favorites] slots, which you change right in the ring.
 
 preset = "auto" # auto | hyprland | omarchy

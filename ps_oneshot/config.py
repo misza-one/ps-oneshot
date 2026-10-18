@@ -19,7 +19,7 @@ BUTTONS = (
 )
 TRIGGERS = ("l2", "r2")
 STICK_MODES = ("none", "scroll", "pointer", "buttons")
-SOURCES = ("herd", "audio", "voxtype-language", "settings", "lights", "triggers", "sticks", "favorites")
+SOURCES = ("herd", "audio", "voxtype-language", "settings", "sound", "haptics", "sensitivity", "lights", "favorites")
 ACTION_KINDS = {
     "wm", "dispatch", "exec", "key", "radial", "herd", "ui", "app", "dictation", "sounds", "rumble", "agent", "touchpad",
     "zoom", "text", "couch", "brightness", "launch", "lights", "triggers", "sticks",

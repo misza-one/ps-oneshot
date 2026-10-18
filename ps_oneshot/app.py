@@ -120,7 +120,10 @@ class App:
         self.menus = RadialMenus(cfg, RadialMenu(load_theme), self.herd, self.favorites, Hooks(
             run_action=self.actions.run, rumble=self.rumble, monitor=lambda: self.monitor,
             capture_sticks=self._sync_stick_capture, settings=self._settings_choices,
-            tuning={"lights": self._lights_choices, "triggers": self._triggers_choices, "sticks": self._sticks_choices},
+            submenus={
+                "sound": self._sound_choices, "haptics": self._haptics_choices,
+                "sensitivity": self._sensitivity_choices, "lights": self._lights_choices,
+            },
             window_class=lambda: self.window_class, paused=lambda: self.paused, battery=self._battery_level,
         ))
         self.carousel = AgentCarousel(cfg, Carousel(load_theme), self.herd, CarouselHooks(
@@ -857,30 +860,31 @@ class App:
         spawn(["notify-send", "-a", APP_NAME, "-t", "2500", message])
 
     def _settings_choices(self) -> list[Choice]:
-        """The "settings" radial source: PS One Shot's own switches. Ring order is clockwise from the top:
-        couch mode on top, toggles upper left/right, mouse speed and effects volume down on the left / up on
-        the right, the Triggers and Sticks submenus facing each other, then pause and the Lightbar submenu
-        either side of the cheat sheet at the bottom. Steppers show their level in the hub."""
-        speed = f"speed {self.cfg.raw['touchpad']['sensitivity']:.2f}"
-        volume = f"volume {self.cfg.get('sounds', 'volume'):.0%}"
+        """The "settings" radial source: PS One Shot's own switches, grouped. Clockwise from the top: couch
+        mode; the Sound and Haptics submenus facing each other up right and left, Lightbar and Sensitivity
+        below them; pause and the cheat sheet at the bottom. Submenus carry no state on their slices: going
+        back shows this ring as it was built."""
         couch = self.couch.active
         return [
             # Not keep_open: the screen rescales under the ring.
             Choice(label="Couch mode", icon="\U000f04b9", action="couch:toggle", active=couch,
                    sublabel="on" if couch else "off"),
-            Choice(label="Vibration", icon="\U000f0566" if self.rumble_on else "\U000f0cd9", action="rumble:toggle",
-                   sublabel="on" if self.rumble_on else "off", active=self.rumble_on, keep_open=True),
-            Choice(label="Mouse +", icon="\uf067", action="touchpad:faster", detail=speed, keep_open=True),
-            Choice(label="Effects +", icon="\U000f075d", action="sounds:louder", detail=volume, keep_open=True),
-            Choice(label="Triggers", icon="\uf05b", action="", source="triggers", detail="adaptive, click strength"),
+            Choice(label="Sound", icon="\uf028", action="", source="sound"),
+            Choice(label="Lightbar", icon="\U000f06e8", action="", source="lights"),
             Choice(label="Pause", icon="\uf04c", action="app:pause", detail="hold PS to resume"),
             Choice(label="Cheat sheet", icon="\uf11c", action="ui:cheatsheet"),
-            Choice(label="Lightbar", icon="\U000f06e8", action="", source="lights", detail="colours, alerts, glow"),
-            Choice(label="Sticks", icon="\uf047", action="", source="sticks", detail="deadzone, speeds"),
-            Choice(label="Effects −", icon="\U000f075e", action="sounds:quieter", detail=volume, keep_open=True),
-            Choice(label="Mouse −", icon="\uf068", action="touchpad:slower", detail=speed, keep_open=True),
+            Choice(label="Sensitivity", icon="\uf1de", action="", source="sensitivity"),
+            Choice(label="Haptics", icon="\U000f0566", action="", source="haptics"),
+        ]
+
+    def _sound_choices(self) -> list[Choice]:
+        """The "sound" radial source: effects on/off on top, volume up down right and down down left."""
+        volume = f"volume {self.cfg.get('sounds', 'volume'):.0%}"
+        return [
             Choice(label="Sounds", icon="\uf028" if self.sounds_on else "\uf026", action="sounds:toggle",
                    sublabel="on" if self.sounds_on else "off", active=self.sounds_on, keep_open=True),
+            Choice(label="Louder", icon="\U000f075d", action="sounds:louder", detail=volume, keep_open=True),
+            Choice(label="Quieter", icon="\U000f075e", action="sounds:quieter", detail=volume, keep_open=True),
         ]
 
     def _lights_choices(self) -> list[Choice]:
@@ -934,18 +938,21 @@ class App:
                 self._alert_preview_until = time.monotonic() + ALERT_PREVIEW_S
             self.refresh_lights()
 
-    def _triggers_choices(self) -> list[Choice]:
-        """The "triggers" radial source: adaptive on top, the click stronger down right, weaker down left.
-        The effect changes at once: pull a trigger in the ring to feel it (the ring ignores triggers)."""
+    def _haptics_choices(self) -> list[Choice]:
+        """The "haptics" radial source: vibration on top, adaptive triggers at the bottom, the trigger click
+        stronger on the right and weaker on the left. A trigger effect changes at once: pull the trigger in
+        the ring to feel it (rings ignore triggers)."""
         cfg = self.cfg.raw["triggers"]
         adaptive = bool(cfg["adaptive"])
         staged = [name.upper() for name in TRIGGERS if (b := self.cfg.layers["normal"].get(name)) and b.staged]
         where = f"on {' and '.join(staged)}" if staged else "(no trigger has two stages)"
         strength = f"click strength {cfg['click_strength']}/8" + (f" · pull {' or '.join(staged)}" if staged else "")
         return [
-            Choice(label="Adaptive", icon="\uf05b", action="triggers:adaptive", sublabel="on" if adaptive else "off",
-                   active=adaptive, keep_open=True, detail=f"resistance and click {where}"),
+            Choice(label="Vibration", icon="\U000f0566" if self.rumble_on else "\U000f0cd9", action="rumble:toggle",
+                   sublabel="on" if self.rumble_on else "off", active=self.rumble_on, keep_open=True),
             Choice(label="Stronger", icon="\uf067", action="triggers:stronger", detail=strength, keep_open=True),
+            Choice(label="Adaptive", icon="\uf05b", action="triggers:adaptive", sublabel="on" if adaptive else "off",
+                   active=adaptive, keep_open=True, detail=f"trigger resistance and click {where}"),
             Choice(label="Weaker", icon="\uf068", action="triggers:weaker", detail=strength, keep_open=True),
         ]
 
@@ -961,9 +968,10 @@ class App:
             for pad in self.pads.values():
                 self._apply_trigger_effects(pad, enabled=not self.paused)
 
-    def _sticks_choices(self) -> list[Choice]:
-        """The "sticks" radial source: the deadzone on top (✕ steps through its sizes), then a faster/slower
-        pair for each stick mode in use, faster on the right, slower mirrored on the left."""
+    def _sensitivity_choices(self) -> list[Choice]:
+        """The "sensitivity" radial source: the stick deadzone on top (✕ steps through its sizes), then a
+        faster/slower pair for each stick mode in use and for the touchpad, faster on the right, slower
+        mirrored on the left."""
         cfg, sticks = self.cfg.raw["input"], self.cfg.raw["sticks"]
 
         def which(mode: str) -> str:
@@ -973,21 +981,24 @@ class App:
         pairs = []
         if which("scroll"):
             detail = f"{which('scroll')} scrolls {sticks['scroll_speed']} notches/s"
-            pairs.append(("Scroll", "\uf0dc", "scroll", detail))
+            pairs.append(("Scroll", "\uf0dc", "sticks:scroll_faster", "sticks:scroll_slower", detail))
         if which("pointer"):
             detail = f"{which('pointer')} moves the pointer {sticks['pointer_speed']} px/s"
-            pairs.append(("Pointer", "\uf245", "pointer", detail))
+            pairs.append(("Pointer", "\uf245", "sticks:pointer_faster", "sticks:pointer_slower", detail))
         if which("buttons"):
             detail = f"{which('buttons')} arrows repeat every {cfg['repeat_interval_ms']} ms (held buttons too)"
-            pairs.append(("Arrows", "\uf0b2", "repeat", detail))
+            pairs.append(("Arrows", "\uf0b2", "sticks:repeat_faster", "sticks:repeat_slower", detail))
+        speed = self.cfg.raw["touchpad"]["sensitivity"]
+        pairs.append(("Touchpad", "\U000f0741", "touchpad:faster", "touchpad:slower",
+                      f"touchpad pointer speed {speed:.2f}"))
         deadzone = float(cfg["stick_deadzone"])
         return [
             Choice(label="Deadzone", icon="\uf192", action="sticks:deadzone", sublabel=f"{deadzone:.0%}",
                    keep_open=True, detail="✕ next size · bigger ignores a drifting stick"),
-            *(Choice(label=f"{label} +", icon=icon, action=f"sticks:{arg}_faster", detail=detail, keep_open=True)
-              for label, icon, arg, detail in pairs),
-            *(Choice(label=f"{label} −", icon=icon, action=f"sticks:{arg}_slower", detail=detail, keep_open=True)
-              for label, icon, arg, detail in reversed(pairs)),
+            *(Choice(label=f"{label} +", icon=icon, action=faster, detail=detail, keep_open=True)
+              for label, icon, faster, _slower, detail in pairs),
+            *(Choice(label=f"{label} −", icon=icon, action=slower, detail=detail, keep_open=True)
+              for label, icon, _faster, slower, detail in reversed(pairs)),
         ]
 
     def _sticks_action(self, arg: str) -> None:

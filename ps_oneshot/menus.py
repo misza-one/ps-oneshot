@@ -59,7 +59,7 @@ class Hooks:
     monitor: Callable[[], str | None]
     capture_sticks: Callable[[bool], None]
     settings: Callable[[], list[Choice]]  # the app's own toggles for the "settings" source
-    tuning: dict[str, Callable[[], list[Choice]]]  # the settings submenus' sources: lights, triggers, sticks
+    submenus: dict[str, Callable[[], list[Choice]]]  # the settings ring's submenus by source: sound, haptics…
     window_class: Callable[[], str]  # the focused window's, for pinning it as a favorite
     paused: Callable[[], bool]
     battery: Callable[[], tuple[int, bool] | None]  # (percent, charging) of the controller, for the overlay's corner
@@ -177,8 +177,8 @@ class RadialMenus:
             return title, self._choice_slices(choices[:MAX_SLICES])
         if source == "settings":
             return title, self._choice_slices(self.hooks.settings()[:MAX_SLICES])
-        if source in self.hooks.tuning:
-            return title, self._choice_slices(self.hooks.tuning[source]()[:MAX_SLICES])
+        if source in self.hooks.submenus:
+            return title, self._choice_slices(self.hooks.submenus[source]()[:MAX_SLICES])
         if source == "favorites":
             return title, self._favorite_slices()
         raise ValueError(f"unknown radial source {source!r}")
@@ -198,7 +198,10 @@ class RadialMenus:
     def _choice_slices(choices: list[Choice]) -> list[Slice]:
         return [
             Slice(
-                item=RadialItem(label=c.label, icon=c.icon, sublabel=c.sublabel, detail=c.detail, active=c.active),
+                item=RadialItem(
+                    label=c.label, icon=c.icon, sublabel=c.sublabel, active=c.active,
+                    detail=c.detail or ("›" if c.source else ""),  # a submenu, as configured ones show it
+                ),
                 action=c.action,
                 source=c.source or None,
                 keep_open=c.keep_open,
