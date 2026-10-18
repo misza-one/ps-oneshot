@@ -123,6 +123,18 @@ def describe(action: str, radial_titles: dict[str, str]) -> str:
             "brighter": "Lightbar brighter", "dimmer": "Lightbar dimmer", "glow_up": "Lightbar idle glow up",
             "glow_down": "Lightbar idle glow down", "scanner": "Running light on/off",
         }.get(arg, arg)
+    if kind == "triggers":
+        return {
+            "adaptive": "Adaptive triggers on/off", "stronger": "Trigger click stronger",
+            "weaker": "Trigger click weaker",
+        }.get(arg, arg)
+    if kind == "sticks":
+        return {
+            "deadzone": "Next stick deadzone", "scroll_faster": "Stick scroll faster",
+            "scroll_slower": "Stick scroll slower",
+            "pointer_faster": "Stick pointer faster", "pointer_slower": "Stick pointer slower",
+            "repeat_faster": "Stick arrows faster", "repeat_slower": "Stick arrows slower",
+        }.get(arg, arg)
     if kind == "key":
         return ", ".join(" + ".join(p.capitalize() for p in combo.split("+")) for combo in arg.split())
     if kind == "launch":

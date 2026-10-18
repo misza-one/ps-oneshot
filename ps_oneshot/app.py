@@ -18,7 +18,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from . import APP_NAME, apps, sounds  # noqa: E402
+from . import APP_NAME, apps, sounds, tuning  # noqa: E402
 from . import lights as fx  # noqa: E402
 from .actions import ActionRunner, spawn  # noqa: E402
 from .agentcarousel import AgentCarousel, CarouselHooks  # noqa: E402
@@ -103,11 +103,12 @@ class App:
                 "rumble": self._rumble_action, "agent": self._agent_action, "touchpad": self._touchpad_action,
                 "zoom": self._zoom_action, "text": self._text_action, "couch": self._couch_action,
                 "brightness": self._brightness_action, "lights": self._lights_action,
+                "triggers": self._triggers_action, "sticks": self._sticks_action,
                 "launch": lambda app_id: apps.launch(self.hypr, app_id, cfg.get("apps", "launch")),
             },
             keyboard=hyprland_device_name(KEYBOARD_NAME),
         )
-        fx.restore_settings(cfg.raw["lights"], sounds.load_state("lights", {}))
+        tuning.restore(cfg.raw, sounds.load_state("tuning", {}))
         self.lights = fx.LightEngine(cfg.section("lights"), _accent_rgb())
         self._alert_preview_until = 0.0
         self._theme_monitor = watch_theme(self._on_theme_set)
@@ -118,7 +119,8 @@ class App:
         self.favorites = Favorites(cfg.section("favorites"))
         self.menus = RadialMenus(cfg, RadialMenu(load_theme), self.herd, self.favorites, Hooks(
             run_action=self.actions.run, rumble=self.rumble, monitor=lambda: self.monitor,
-            capture_sticks=self._sync_stick_capture, settings=self._settings_choices, lights=self._lights_choices,
+            capture_sticks=self._sync_stick_capture, settings=self._settings_choices,
+            tuning={"lights": self._lights_choices, "triggers": self._triggers_choices, "sticks": self._sticks_choices},
             window_class=lambda: self.window_class, paused=lambda: self.paused, battery=self._battery_level,
         ))
         self.carousel = AgentCarousel(cfg, Carousel(load_theme), self.herd, CarouselHooks(
@@ -857,8 +859,8 @@ class App:
     def _settings_choices(self) -> list[Choice]:
         """The "settings" radial source: PS One Shot's own switches. Ring order is clockwise from the top:
         couch mode on top, toggles upper left/right, mouse speed and effects volume down on the left / up on
-        the right, then pause and the Lightbar submenu either side of the cheat sheet at the bottom. Steppers
-        show their level in the hub."""
+        the right, the Triggers and Sticks submenus facing each other, then pause and the Lightbar submenu
+        either side of the cheat sheet at the bottom. Steppers show their level in the hub."""
         speed = f"speed {self.cfg.raw['touchpad']['sensitivity']:.2f}"
         volume = f"volume {self.cfg.get('sounds', 'volume'):.0%}"
         couch = self.couch.active
@@ -870,9 +872,11 @@ class App:
                    sublabel="on" if self.rumble_on else "off", active=self.rumble_on, keep_open=True),
             Choice(label="Mouse +", icon="\uf067", action="touchpad:faster", detail=speed, keep_open=True),
             Choice(label="Effects +", icon="\U000f075d", action="sounds:louder", detail=volume, keep_open=True),
+            Choice(label="Triggers", icon="\uf05b", action="", source="triggers", detail="adaptive, click strength"),
             Choice(label="Pause", icon="\uf04c", action="app:pause", detail="hold PS to resume"),
             Choice(label="Cheat sheet", icon="\uf11c", action="ui:cheatsheet"),
             Choice(label="Lightbar", icon="\U000f06e8", action="", source="lights", detail="colours, alerts, glow"),
+            Choice(label="Sticks", icon="\uf047", action="", source="sticks", detail="deadzone, speeds"),
             Choice(label="Effects −", icon="\U000f075e", action="sounds:quieter", detail=volume, keep_open=True),
             Choice(label="Mouse −", icon="\uf068", action="touchpad:slower", detail=speed, keep_open=True),
             Choice(label="Sounds", icon="\uf028" if self.sounds_on else "\uf026", action="sounds:toggle",
@@ -903,30 +907,103 @@ class App:
                    detail="player LEDs while agents work"),
         ]
 
+    def _tune(self, name: str, direction: int = 1, wrap: bool = False) -> bool:
+        """Step one of `tuning.TUNABLES` and remember it; at the end of its range, a buzz and False."""
+        value = tuning.next_value(self.cfg.raw, name, direction, wrap)
+        if value is None:
+            self.rumble(fx.RUMBLE_NOTHING)
+            return False
+        section, key = name.split(".", 1)
+        self.cfg.raw[section][key] = value
+        saved = sounds.load_state("tuning", {})
+        sounds.save_state("tuning", {**(saved if isinstance(saved, dict) else {}), name: value})
+        return True
+
     def _lights_action(self, arg: str) -> None:
-        """The Lightbar ring's switches and steppers over [lights]; each change is remembered."""
-        cfg = self.cfg.raw["lights"]
-        if arg in ("vivid", "scanner"):
-            key, value = arg, not cfg[arg]
-        elif arg == "alert":
-            key = "alert_style"
-            styles = fx.ALERT_STYLES
-            value = styles[(styles.index(cfg[key]) + 1) % len(styles)] if cfg[key] in styles else styles[0]
-            self._alert_preview_until = time.monotonic() + ALERT_PREVIEW_S
-        elif arg in ("brighter", "dimmer", "glow_up", "glow_down"):
-            key = "brightness" if arg in ("brighter", "dimmer") else "idle_brightness"
-            stops = fx.BRIGHTNESS_STOPS if key == "brightness" else fx.IDLE_STOPS
-            value = next_stop(list(stops), float(cfg[key]), 1 if arg in ("brighter", "glow_up") else -1)
-            if value is None:
-                self.rumble(fx.RUMBLE_NOTHING)  # already at the end of the range
-                return
-        else:
+        """The Lightbar ring's switches and steppers over [lights]."""
+        steps = {
+            "vivid": ("lights.vivid", 1), "scanner": ("lights.scanner", 1), "alert": ("lights.alert_style", 1),
+            "brighter": ("lights.brightness", 1), "dimmer": ("lights.brightness", -1),
+            "glow_up": ("lights.idle_brightness", 1), "glow_down": ("lights.idle_brightness", -1),
+        }
+        if arg not in steps:
             log.warning("unknown lights action %r", arg)
             return
-        cfg[key] = value
-        saved = sounds.load_state("lights", {})
-        sounds.save_state("lights", {**(saved if isinstance(saved, dict) else {}), key: value})
-        self.refresh_lights()
+        if self._tune(*steps[arg]):
+            if arg == "alert":
+                self._alert_preview_until = time.monotonic() + ALERT_PREVIEW_S
+            self.refresh_lights()
+
+    def _triggers_choices(self) -> list[Choice]:
+        """The "triggers" radial source: adaptive on top, the click stronger down right, weaker down left.
+        The effect changes at once: pull a trigger in the ring to feel it (the ring ignores triggers)."""
+        cfg = self.cfg.raw["triggers"]
+        adaptive = bool(cfg["adaptive"])
+        staged = [name.upper() for name in TRIGGERS if (b := self.cfg.layers["normal"].get(name)) and b.staged]
+        where = f"on {' and '.join(staged)}" if staged else "(no trigger has two stages)"
+        strength = f"click strength {cfg['click_strength']}/8" + (f" · pull {' or '.join(staged)}" if staged else "")
+        return [
+            Choice(label="Adaptive", icon="\uf05b", action="triggers:adaptive", sublabel="on" if adaptive else "off",
+                   active=adaptive, keep_open=True, detail=f"resistance and click {where}"),
+            Choice(label="Stronger", icon="\uf067", action="triggers:stronger", detail=strength, keep_open=True),
+            Choice(label="Weaker", icon="\uf068", action="triggers:weaker", detail=strength, keep_open=True),
+        ]
+
+    def _triggers_action(self, arg: str) -> None:
+        steps = {
+            "adaptive": ("triggers.adaptive", 1), "stronger": ("triggers.click_strength", 1),
+            "weaker": ("triggers.click_strength", -1),
+        }
+        if arg not in steps:
+            log.warning("unknown triggers action %r", arg)
+            return
+        if self._tune(*steps[arg]):
+            for pad in self.pads.values():
+                self._apply_trigger_effects(pad, enabled=not self.paused)
+
+    def _sticks_choices(self) -> list[Choice]:
+        """The "sticks" radial source: the deadzone on top (✕ steps through its sizes), then a faster/slower
+        pair for each stick mode in use, faster on the right, slower mirrored on the left."""
+        cfg, sticks = self.cfg.raw["input"], self.cfg.raw["sticks"]
+
+        def which(mode: str) -> str:
+            sides = [side for side in ("left", "right") if sticks[side] == mode]
+            return "both sticks" if len(sides) == 2 else f"{sides[0]} stick" if sides else ""
+
+        pairs = []
+        if which("scroll"):
+            detail = f"{which('scroll')} scrolls {sticks['scroll_speed']} notches/s"
+            pairs.append(("Scroll", "\uf0dc", "scroll", detail))
+        if which("pointer"):
+            detail = f"{which('pointer')} moves the pointer {sticks['pointer_speed']} px/s"
+            pairs.append(("Pointer", "\uf245", "pointer", detail))
+        if which("buttons"):
+            detail = f"{which('buttons')} arrows repeat every {cfg['repeat_interval_ms']} ms (held buttons too)"
+            pairs.append(("Arrows", "\uf0b2", "repeat", detail))
+        deadzone = float(cfg["stick_deadzone"])
+        return [
+            Choice(label="Deadzone", icon="\uf192", action="sticks:deadzone", sublabel=f"{deadzone:.0%}",
+                   keep_open=True, detail="✕ next size · bigger ignores a drifting stick"),
+            *(Choice(label=f"{label} +", icon=icon, action=f"sticks:{arg}_faster", detail=detail, keep_open=True)
+              for label, icon, arg, detail in pairs),
+            *(Choice(label=f"{label} −", icon=icon, action=f"sticks:{arg}_slower", detail=detail, keep_open=True)
+              for label, icon, arg, detail in reversed(pairs)),
+        ]
+
+    def _sticks_action(self, arg: str) -> None:
+        if arg == "deadzone":
+            self._tune("input.stick_deadzone", wrap=True)
+            return
+        steps = {
+            "scroll_faster": ("sticks.scroll_speed", 1), "scroll_slower": ("sticks.scroll_speed", -1),
+            "pointer_faster": ("sticks.pointer_speed", 1), "pointer_slower": ("sticks.pointer_speed", -1),
+            # Faster arrows repeat sooner: a shorter interval.
+            "repeat_faster": ("input.repeat_interval_ms", -1), "repeat_slower": ("input.repeat_interval_ms", 1),
+        }
+        if arg not in steps:
+            log.warning("unknown sticks action %r", arg)
+            return
+        self._tune(*steps[arg])
 
     def _app_action(self, arg: str) -> None:
         if arg != "pause":

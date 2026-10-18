@@ -29,7 +29,12 @@
 #   sounds:louder|quieter  sound effects volume up/down by 10%; remembered
 #   rumble:toggle      switch vibration (rumble and the trigger kick) on/off; remembered
 #   lights:vivid|scanner  switch [lights] vivid / scanner; lights:alert  next alert_style (shown for 3 s);
-#   lights:brighter|dimmer  brightness; lights:glow_up|glow_down  idle_brightness. All remembered.
+#   lights:brighter|dimmer  brightness; lights:glow_up|glow_down  idle_brightness.
+#   triggers:adaptive  switch [triggers] adaptive; triggers:stronger|weaker  click_strength.
+#   sticks:deadzone    next [input] stick_deadzone (wraps around); sticks:scroll_faster|scroll_slower,
+#                      pointer_faster|pointer_slower  [sticks] speeds; repeat_faster|repeat_slower
+#                      [input] repeat_interval_ms (arrows from a stick in buttons mode, held buttons).
+#                      lights:, triggers: and sticks: changes apply at once and are remembered.
 #   zoom:in|out|reset  text size in the focused window, with that app's own zoom keys (see [zoom])
 #   text:bigger|smaller|reset  system-wide text size, stepping through [text] stops
 #   couch:toggle|on|off  Couch Coding Mode: the whole screen bigger, to read it from the couch (see [couch])
@@ -58,10 +63,12 @@
 #          lstick_up/down/left/right rstick_up/down/left/right (sticks in "buttons" mode)
 #
 # Radial items: { label, icon, action | items = [...] | source, keep_open, inline }
-#   source = "herd" | "audio" | "voxtype-language" | "settings" | "lights" | "favorites" builds the content
-#   live: a submenu, or spliced straight into the ring with inline = true. "settings" holds PS One Shot's own
-#   switches (couch mode, sounds and their volume, vibration, mouse speed, cheat sheet, pause), each showing its state,
-#   and the "lights" submenu (Lightbar: colours, alert style, brightness, idle glow, running light).
+#   source = "herd" | "audio" | "voxtype-language" | "settings" | "lights" | "triggers" | "sticks" | "favorites"
+#   builds the content live: a submenu, or spliced straight into the ring with inline = true. "settings" holds
+#   PS One Shot's own switches (couch mode, sounds and their volume, vibration, mouse speed, cheat sheet, pause),
+#   each showing its state, and the submenus "lights" (Lightbar: colours, alert style, brightness, idle glow,
+#   running light), "triggers" (adaptive on/off, click strength) and "sticks" (deadzone, the speed of each stick
+#   mode in use).
 #   "favorites" are the [favorites] slots, which you change right in the ring.
 
 preset = "auto" # auto | hyprland | omarchy

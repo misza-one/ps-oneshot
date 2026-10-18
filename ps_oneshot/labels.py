@@ -20,8 +20,11 @@ SOURCE_TEXT = {
     "herd": "Agents grouped by machine; ✕ goes to one",
     "audio": "Outputs and inputs; ✕ makes one the default",
     "voxtype-language": "Dictation language; the current one ✓",
-    "settings": "Couch mode · Sounds · Effects +/− · Vibration · Mouse speed +/− · Lightbar › · Cheat sheet · Pause",
+    "settings": "Couch mode · Sounds · Effects +/− · Vibration · Mouse +/− · Triggers › · Sticks › · Lightbar › · "
+                "Cheat sheet · Pause",
     "lights": "Lightbar colours · Alert style · Brightness +/− · Idle glow +/− · Running light",
+    "triggers": "Adaptive triggers on/off · Click strength +/−",
+    "sticks": "Deadzone · Scroll, pointer or arrow speed +/− for the stick modes in use",
     "favorites": "Your apps; change them right in the ring (see In a radial)",
 }
 # Rows follow the controller: shoulders and D-pad, sticks and touchpad, face buttons, triggers, the rest.

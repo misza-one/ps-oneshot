@@ -19,10 +19,10 @@ BUTTONS = (
 )
 TRIGGERS = ("l2", "r2")
 STICK_MODES = ("none", "scroll", "pointer", "buttons")
-SOURCES = ("herd", "audio", "voxtype-language", "settings", "lights", "favorites")
+SOURCES = ("herd", "audio", "voxtype-language", "settings", "lights", "triggers", "sticks", "favorites")
 ACTION_KINDS = {
     "wm", "dispatch", "exec", "key", "radial", "herd", "ui", "app", "dictation", "sounds", "rumble", "agent", "touchpad",
-    "zoom", "text", "couch", "brightness", "launch", "lights",
+    "zoom", "text", "couch", "brightness", "launch", "lights", "triggers", "sticks",
 }
 FAVORITE_KEYS = {"label", "icon", "action"}
 USER_CONFIG = os.path.join(

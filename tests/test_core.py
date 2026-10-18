@@ -1,6 +1,6 @@
 import unittest
 
-from ps_oneshot import config, herd, lights
+from ps_oneshot import config, herd, lights, tuning
 from ps_oneshot.hypr import Hyprland, HyprlandError, clean_scale
 
 
@@ -139,15 +139,6 @@ class LightsTest(unittest.TestCase):
         self.assertTrue(all(f.animated for f in masks))
         self.assertEqual(self.engine.frame(lights.LightInputs(), 0.0).player_mask, 0)
 
-    def test_lightbar_ring_settings_restore_over_the_config_skipping_bad_values(self):
-        cfg = dict(config._default("base")["lights"])
-        saved = {"vivid": False, "scanner": "yes", "alert_style": "strobe", "brightness": 0.6, "idle_brightness": 7}
-        lights.restore_settings(cfg, saved)
-        self.assertEqual((cfg["vivid"], cfg["brightness"]), (False, 0.6))
-        self.assertEqual((cfg["scanner"], cfg["alert_style"], cfg["idle_brightness"]), (True, "alternate", 0.12))
-        lights.restore_settings(cfg, None)  # nothing saved yet, or a broken state file
-        self.assertEqual(cfg["brightness"], 0.6)
-
     def test_paused_leaves_leds_alone(self):
         self.assertIsNone(self.engine.frame(lights.LightInputs(paused=True, herd_status="blocked"), 0.0))
 
@@ -219,6 +210,35 @@ class MonitorRuleTest(unittest.TestCase):
     def test_output_name_is_quoted_for_lua(self):
         payload = self.hypr(True).monitor_payload({**self.MONITOR, "name": 'x"); os.exit(--'}, 3)
         self.assertIn('output = "x\\"); os.exit(--"', payload)
+
+class TuningTest(unittest.TestCase):
+    def setUp(self):
+        self.raw = config._default("base")
+
+    def test_switches_flip_choices_cycle_steppers_stop_at_the_ends(self):
+        self.assertIs(tuning.next_value(self.raw, "lights.vivid"), False)
+        self.assertEqual(tuning.next_value(self.raw, "lights.alert_style"), "blink")
+        self.raw["triggers"]["click_strength"] = 8
+        self.assertIsNone(tuning.next_value(self.raw, "triggers.click_strength", 1))
+        self.assertEqual(tuning.next_value(self.raw, "triggers.click_strength", -1), 7)
+        self.raw["sticks"]["scroll_speed"] = 18  # set by hand between two stops
+        self.assertEqual(tuning.next_value(self.raw, "sticks.scroll_speed", 1), 20)
+        self.assertEqual(tuning.next_value(self.raw, "sticks.scroll_speed", -1), 16)
+        self.raw["input"]["stick_deadzone"] = 0.3
+        self.assertEqual(tuning.next_value(self.raw, "input.stick_deadzone", wrap=True), 0.08)
+
+    def test_restore_puts_remembered_values_over_the_config_skipping_bad_ones(self):
+        saved = {
+            "lights.vivid": False, "triggers.click_strength": 3, "sticks.scroll_speed": 25,
+            "lights.scanner": "yes", "lights.alert_style": "strobe", "input.stick_deadzone": 0.9,
+            "sticks.left": "pointer", "nonsense": 1,
+        }
+        tuning.restore(self.raw, saved)
+        self.assertEqual((self.raw["lights"]["vivid"], self.raw["triggers"]["click_strength"]), (False, 3))
+        self.assertEqual(self.raw["sticks"]["scroll_speed"], 25)
+        self.assertEqual((self.raw["lights"]["scanner"], self.raw["lights"]["alert_style"]), (True, "alternate"))
+        self.assertEqual((self.raw["input"]["stick_deadzone"], self.raw["sticks"]["left"]), (0.18, "buttons"))
+        tuning.restore(self.raw, None)  # nothing saved yet, or a broken state file
 
 
 if __name__ == "__main__":
