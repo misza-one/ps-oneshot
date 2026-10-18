@@ -221,12 +221,13 @@ class Controller:
             return False
         r, g, b = (max(0, min(int(c), 255)) for c in rgb)
         level = round(max(0.0, min(brightness, 1.0)) * self._max(self.lightbar))
-        return self._write(
-            [
-                (os.path.join(self.lightbar, "multi_intensity"), f"{r} {g} {b}"),
-                (os.path.join(self.lightbar, "brightness"), str(level)),
-            ]
-        )
+        color = (os.path.join(self.lightbar, "multi_intensity"), f"{r} {g} {b}")
+        dim = (os.path.join(self.lightbar, "brightness"), str(level))
+        # Each write goes out as its own report. Dimming, the level goes first, so the step between them is the
+        # old colour dimmer rather than the new one at the old brightness (a flash when an alert ends).
+        previous = self._written.get(dim[0])
+        dimming = previous is not None and previous.isdigit() and int(previous) > level
+        return self._write([dim, color] if dimming else [color, dim])
 
     def set_player_leds(self, mask: int) -> bool:
         if not self.player_leds:

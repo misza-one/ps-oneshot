@@ -211,7 +211,7 @@ class App:
     def _quit(self) -> bool:
         for pad in list(self.pads.values()):
             pad.controller.set_player_leds(0)
-            pad.controller.set_lightbar(tuple(self.cfg.get("lights", "paused")), 0.5)
+            pad.controller.set_lightbar(self.lights.led(self.cfg.get("lights", "paused")), 0.5)
             self._apply_trigger_effects(pad, enabled=False)
             pad.close()
         self.pads.clear()
@@ -897,9 +897,9 @@ class App:
         idle = float(cfg["idle_brightness"])
         glow = f"idle glow {idle:.0%}" if idle > 0 else "idle glow off"
         return [
-            Choice(label="Colours", icon="\U000f03d8", action="lights:vivid", sublabel="vivid" if vivid else "as theme",
+            Choice(label="Colours", icon="\U000f03d8", action="lights:vivid", sublabel="vivid" if vivid else "as set",
                    active=vivid, keep_open=True,
-                   detail="theme colours at full strength" if vivid else "theme colours as on screen"),
+                   detail="every colour at full strength" if vivid else "colours as the theme and config have them"),
             Choice(label="Alerts", icon="\uf0f3", action="lights:alert", sublabel=cfg["alert_style"], keep_open=True,
                    detail="✕ next style, played on the lightbar"),
             Choice(label="Brighter", icon="\U000f00e0", action="lights:brighter", detail=brightness, keep_open=True),
@@ -1044,7 +1044,7 @@ class App:
             self._apply_trigger_effects(pad, enabled=not paused)
             self._sync_mic_mute()
             if paused:
-                pad.controller.set_lightbar(tuple(self.cfg.get("lights", "paused")), 0.6)
+                pad.controller.set_lightbar(self.lights.led(self.cfg.get("lights", "paused")), 0.6)
                 pad.controller.set_player_leds(0)
         self.rumble(fx.RUMBLE_PAUSE, force=True)
         self.refresh_lights()
@@ -1125,6 +1125,7 @@ class App:
 
     def _on_theme_set(self) -> None:
         self.lights.idle_rgb = _accent_rgb()
+        log.info("theme changed: lightbar accent %s", self.lights.led(self.lights.idle_rgb))
         self.refresh_lights()
 
     def refresh_lights(self) -> bool:

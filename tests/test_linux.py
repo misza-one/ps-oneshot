@@ -8,9 +8,10 @@ import tempfile
 import unittest
 import zlib
 from array import array
+from unittest import mock
 
 from ps_oneshot.actions import needs_layout, parse_combo
-from ps_oneshot.linux import evdev, opus, xkb
+from ps_oneshot.linux import dualsense, evdev, opus, xkb
 from ps_oneshot.linux.dualsense import (
     BT_AUDIO_FRAME_BYTES,
     BT_AUDIO_FRAME_SAMPLES,
@@ -222,6 +223,23 @@ class LedTest(unittest.TestCase):
         os.remove(os.path.join(self.bar, "brightness"))
         self.assertTrue(self.ctrl.set_lightbar((255, 0, 64), 0.5))
         self.assertFalse(os.path.exists(os.path.join(self.bar, "brightness")))
+
+    def test_dims_before_recolouring_and_recolours_before_brightening(self) -> None:
+        order: list[str] = []
+        real = dualsense._write_text
+
+        def record(path: str, value: str) -> None:
+            order.append(os.path.basename(path))
+            real(path, value)
+
+        with mock.patch.object(dualsense, "_write_text", record):
+            self.ctrl.set_lightbar((255, 0, 0), 1.0)  # an alert, full
+            order.clear()
+            self.ctrl.set_lightbar((255, 114, 0), 0.12)  # back to the idle accent: no full-bright accent between
+            self.assertEqual(order, ["brightness", "multi_intensity"])
+            order.clear()
+            self.ctrl.set_lightbar((255, 0, 0), 1.0)
+            self.assertEqual(order, ["multi_intensity", "brightness"])
 
     def test_permission_denied_returns_false(self) -> None:
         if os.geteuid() == 0:

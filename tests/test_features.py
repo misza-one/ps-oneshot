@@ -233,7 +233,7 @@ class AlertBlinkTest(unittest.TestCase):
         self.assertEqual(engine.frame(waiting, period * 0.1).brightness, cfg["brightness"])
         self.assertEqual(engine.frame(waiting, period * 0.6).brightness, 0.0)
         recording = engine.frame(lights.LightInputs(herd_status="blocked", recording=True), period * 0.6)
-        self.assertEqual(list(recording.rgb), cfg["recording"])
+        self.assertEqual(recording.rgb, lights.vivid(tuple(cfg["recording"])))
         self.assertGreater(recording.brightness, 0.0)
 
     def test_alert_alternates_with_the_waiting_agents_colour(self):
@@ -243,7 +243,7 @@ class AlertBlinkTest(unittest.TestCase):
         waiting = lights.LightInputs(herd_status="blocked", alert_rgb=claude)
         period = cfg["blink_period"]
         first, second = engine.frame(waiting, period * 0.1), engine.frame(waiting, period * 0.6)
-        self.assertEqual(list(first.rgb), cfg["blocked"])
+        self.assertEqual(first.rgb, lights.vivid(tuple(cfg["blocked"])))
         self.assertEqual((second.rgb, second.brightness), (lights.vivid(claude), cfg["brightness"]))
         # An agent coloured like its alert (Kimi's yellow, done) would look solid: dark instead.
         kimi = lights.LightInputs(herd_status="done", alert_rgb=(253, 224, 71))

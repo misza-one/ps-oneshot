@@ -1,3 +1,4 @@
+import colorsys
 import unittest
 
 from ps_oneshot import config, herd, lights, tuning
@@ -115,20 +116,32 @@ class LightsTest(unittest.TestCase):
             (lights.LightInputs(herd_status="blocked", battery_low=True), cfg["blocked"]),
             (lights.LightInputs(herd_status="done", battery_low=True), cfg["done"]),
             (lights.LightInputs(herd_status="working", battery_low=True), cfg["battery_low"]),
-            (lights.LightInputs(herd_status="working"), list(lights.vivid((1, 2, 3)))),
+            (lights.LightInputs(herd_status="working"), [1, 2, 3]),
         ]
         for inputs, expected in cases:
-            self.assertEqual(list(self.engine.frame(inputs, 0.0).rgb), list(expected), inputs)
+            self.assertEqual(self.engine.frame(inputs, 0.0).rgb, lights.vivid(tuple(expected)), inputs)
 
-    def test_screen_colours_go_out_vivid_and_configured_ones_as_written(self):
+    def test_every_lightbar_colour_goes_out_vivid_unless_switched_off(self):
         self.assertEqual(lights.vivid((250, 169, 104)), (255, 114, 0))  # retro-82's peach accent → ff7200
+        self.assertEqual(lights.vivid((220, 68, 68)), (255, 0, 0))  # the alert's red, not pink
         self.assertEqual(lights.vivid((128, 128, 128)), (255, 255, 255))  # no hue: stays neutral
         cfg = config._default("base")["lights"]
         engine = lights.LightEngine(cfg, (250, 169, 104))
-        self.assertEqual(engine.frame(lights.LightInputs(), 0.0).rgb, (255, 114, 0))
-        self.assertEqual(list(engine.frame(lights.LightInputs(herd_status="blocked"), 0.0).rgb), cfg["blocked"])
-        as_on_screen = lights.LightEngine({**cfg, "vivid": False}, (250, 169, 104))
-        self.assertEqual(as_on_screen.frame(lights.LightInputs(), 0.0).rgb, (250, 169, 104))
+        frames = {
+            "idle": engine.frame(lights.LightInputs(), 0.0),
+            "alert": engine.frame(lights.LightInputs(herd_status="blocked", alert_rgb=(224, 145, 90)), 0.1),
+            "agent": engine.frame(lights.LightInputs(herd_status="blocked", alert_rgb=(224, 145, 90)), 0.6),
+            "done": engine.frame(lights.LightInputs(herd_status="done"), 0.1),
+            "recording": engine.frame(lights.LightInputs(recording=True), 0.0),
+            "battery": engine.frame(lights.LightInputs(battery_low=True), 0.0),
+        }
+        for name, frame in frames.items():
+            _h, saturation, value = colorsys.rgb_to_hsv(*(c / 255 for c in frame.rgb))
+            self.assertEqual((round(saturation, 3), round(value, 3)), (1.0, 1.0), (name, frame.rgb))
+        self.assertEqual(engine.led([20, 40, 140]), (0, 43, 255))  # the pause colour, written by the app
+        as_written = lights.LightEngine({**cfg, "vivid": False}, (250, 169, 104))
+        self.assertEqual(as_written.frame(lights.LightInputs(), 0.0).rgb, (250, 169, 104))
+        self.assertEqual(as_written.led([20, 40, 140]), (20, 40, 140))
 
     def test_player_leds_count_waiting_or_scan_while_agents_work(self):
         waiting = self.engine.frame(lights.LightInputs(herd_status="blocked", waiting=2), 0.0)

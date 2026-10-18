@@ -59,9 +59,10 @@ def scanner_mask(now: float) -> int:
 
 @lru_cache(maxsize=64)
 def vivid(rgb: RGB) -> RGB:
-    """A screen colour for the lightbar: its hue at full saturation and full value, the way RGB-sync tools light
-    a PC from the theme (#faa968 → ff7200). A pastel carries white, and a dimmed LED renders that white bluish:
-    the peach accent glowed lilac at the idle brightness. Greys keep their (lack of) hue, at full value."""
+    """A colour for the lightbar: its hue at full saturation and full value, the way RGB-sync tools light a PC
+    from the theme (#faa968 → ff7200, the alert's [220, 68, 68] → pure red). A pastel carries white, and an LED
+    renders that white bluish, more so dimmed: the peach accent glowed lilac at the idle brightness, the alert's
+    red went pink. Greys keep their (lack of) hue, at full value."""
     h, s, v = colorsys.rgb_to_hsv(*(c / 255 for c in rgb))
     if v == 0:
         return 255, 255, 255
@@ -105,25 +106,28 @@ class LightEngine:
         frame = self._lightbar(state, scanner_mask(now) if scanning else player_mask(state.waiting), now)
         return replace(frame, animated=True) if scanning else frame
 
-    def _screen(self, rgb: RGB) -> RGB:
-        """Colours taken from screen palettes (the accent, agent kinds); configured colours go out as written."""
+    def led(self, rgb: RGB | list[int]) -> RGB:
+        """Every colour on its way to the lightbar, from the theme, an agent or the config: `vivid`, or as
+        written. The pause colour, which the app writes itself, comes through here too."""
+        rgb = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
         return vivid(rgb) if self._cfg["vivid"] else rgb
 
     def _lightbar(self, state: LightInputs, mask: int, now: float) -> LightFrame:
         top = float(self._cfg["brightness"])
         idle = float(self._cfg["idle_brightness"])
-        accent = self._screen(self.idle_rgb)
+        accent = self.led(self.idle_rgb)
         if state.recording:
+            recording = self.led(self._cfg["recording"])
             period = float(self._cfg["recording_pulse"])
             if period <= 0:
-                return LightFrame(tuple(self._cfg["recording"]), top, mask, False)
-            return LightFrame(tuple(self._cfg["recording"]), top * (0.3 + 0.7 * breath(now, period)), mask, True)
+                return LightFrame(recording, top, mask, False)
+            return LightFrame(recording, top * (0.3 + 0.7 * breath(now, period)), mask, True)
         if state.herd_status in ("blocked", "done"):
-            agent = self._screen(state.alert_rgb) if state.alert_rgb is not None else None
-            return self._alert(tuple(self._cfg[state.herd_status]), agent, top, mask, now)
+            agent = self.led(state.alert_rgb) if state.alert_rgb is not None else None
+            return self._alert(self.led(self._cfg[state.herd_status]), agent, top, mask, now)
         if state.battery_low:
             blink = 1.0 if (now % 2.0) < 0.35 else idle
-            return LightFrame(tuple(self._cfg["battery_low"]), top * blink, mask, True)
+            return LightFrame(self.led(self._cfg["battery_low"]), top * blink, mask, True)
         if state.herd_status == "working":
             return LightFrame(accent, top * (idle + (0.4 - idle) * breath(now)), mask, True)
         return LightFrame(accent, top * idle, mask, False)

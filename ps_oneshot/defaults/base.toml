@@ -122,8 +122,9 @@ namespaces = '^(omarchy-menu|rofi|wofi|walker|fuzzel|anyrun|launcher)$'
 enabled = true
 brightness = 1.0
 idle_brightness = 0.12   # idle shows the theme's accent this dim; working breathes it up to 0.4
-vivid = true             # the accent and agent colours at their hue's full colour, as RGB-sync tools light a PC
-                         # (#faa968 → ff7200); false = as on screen (dimmed pastels turn bluish on the LEDs)
+vivid = true             # every lightbar colour (accent, agents, the ones below) at its hue's full colour, as
+                         # RGB-sync tools light a PC (#faa968 → ff7200); false = as written (pastels turn
+                         # bluish on the LEDs: peach goes lilac, [220, 68, 68] pink)
 scanner = true           # player LEDs: one runs back and forth while agents work and none waits
 recording = [255, 0, 0]  # push-to-talk active
 recording_pulse = 0.8    # seconds per pulse (faster than the agent alerts); 0 = solid
