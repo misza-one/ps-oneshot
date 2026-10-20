@@ -62,8 +62,11 @@ python3 -c "import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Gtk
   || { echo "missing PyGObject, GTK 4 or gtk4-layer-shell: install them with your package manager"; exit 1; }
 
 mkdir -p "$(dirname "$bin")" "$unit_dir"
+# Bytecode goes to the cache, not the checkout: as an Omarchy plugin, the checkout is in a directory the shell
+# watches, and every new file there reloads its plugins.
 cat > "$bin" <<EOF
 #!/bin/sh
+export PYTHONPYCACHEPREFIX="\${XDG_CACHE_HOME:-\$HOME/.cache}/ps-oneshot/pycache"
 PYTHONPATH="$here\${PYTHONPATH:+:\$PYTHONPATH}" exec python3 -m ps_oneshot "\$@"
 EOF
 chmod +x "$bin"

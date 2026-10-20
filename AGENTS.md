@@ -7,6 +7,7 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 - **Names:** CLI and service `ps-oneshot`, package `ps_oneshot`, display name `APP_NAME = "PS One Shot"`.
 - **Shape:** one Linux daemon process, MIT licensed.
 - **Dependencies:** stdlib plus PyGObject only (GLib, GTK 4, gtk4-layer-shell). It is standalone: don't add other dependencies or integrations.
+- **The one integration:** the repository is also an Omarchy shell plugin (`manifest.json` at the root, id `io.github.misza-one.ps-oneshot`), a bar widget in QML (`plugin/BarWidget.qml`) that runs inside Omarchy's shell and reaches the daemon only through its control socket. Listed on the Omarchy plugin marketplace (plugins.omarchy.org): the root `README.md`, `LICENSE` and `preview.png` are part of that listing.
 
 ## Architecture & Data Flow
 
@@ -51,7 +52,10 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
   - ✕ on an empty slot: the ring closes, `[favorites] picker` gets the choices on stdin, and the ring reopens with that slot selected.
   - Inline in a configured ring, edits rebuild it from `View.items`. App icons draw through `ui.radial.lookup_icon` (GTK icon theme → render node → cairo).
 - **Agent carousel** (`herd:pick`, `agentcarousel.AgentCarousel` + `ui.carousel.Carousel`): Omarchy's image picker (the theme switcher) redrawn by us, so status dots can blink. Same geometry (768x475 card, 108x432 strips at a 78 px step, skew 28) and the theme's `[image-picker]` colours from `shell.toml` (`Theme.picker_scrim` / `picker_selected` / `picker_unselected`). Cards are in R3 order (`agentcards.card_order`, by machine) and it opens on `agentcards.most_urgent`. Cards and strips (`agentcards.paint_card` / `paint_strip`) are painted once per `CarouselItem.key` into surfaces; a frame only composites them, and frames come on a change or a blink (`BLINK_MS`). Dots: on each strip, on the card, and in a row under it (`agentcards.dot_style`; waiting agents blink). Pad: D-pad/stick ←/→ (the stick repeats), L1/R1 previous/next waiting, ✕ go to, ○/L3/R3 close. Keyboard (it holds it like the radial): arrows, Tab, Home/End, Enter, Escape; typing filters (`agentcards.matches`). `App._on_herd` refreshes it live, keeping the selected agent. `herd:pick` again closes it.
-- **Control socket** (`control.ControlServer`, `$XDG_RUNTIME_DIR/ps-oneshot/control.sock`, 0600): one action per connection, `ok` or `error: …` back (`App._on_control` checks the kind and radial name). `ps-oneshot agents` (`agentpicker.run`) sends `herd:pick`; with no daemon answering it falls back to `agentpicker.pick`, the same cards as PNGs in Omarchy's own image selector (static). A second daemon (a test instance) finds the socket answering and leaves it alone, so smoke tests can't open the carousel through it: bind a pad button to `herd:pick` instead.
+- **Control socket** (`control.ControlServer`, `$XDG_RUNTIME_DIR/ps-oneshot/control.sock`, 0600): one action per connection, `ok` or `error: …` back (`App._on_control` checks the kind and radial name). `ps-oneshot agents` (`agentpicker.run`) sends `herd:pick`; with no daemon answering it falls back to `agentpicker.pick`, the same cards as PNGs in Omarchy's own image selector (static). A second daemon (a test instance) finds the socket answering and leaves it alone, so smoke tests can't open the carousel through it: bind a pad button to `herd:pick` instead. Two lines aren't actions:
+  - `status` answers with one JSON line, `App._status_line` → `status.snapshot` (pads with battery, pause and game mode, the alert colours, and `status.machines`: agents grouped by machine with counts per status). `ps-oneshot status` prints it.
+  - `watch` keeps the connection: the line goes out at once and again whenever it changes (`ControlServer.publish`, called on herd updates, pad connect/loss, pause and the 60 s battery check; it compares with the last line sent). Lines the client sends after `watch` are actions, run without a reply. A watcher that stops reading is dropped (non-blocking send).
+- **Omarchy bar widget** (`plugin/BarWidget.qml`, a qs.Ui `Panel` with a `WidgetButton` and a `KeyboardPanel`): one `Socket` that sends `watch` and draws each line: the emptiest pad's percent, then per machine the counts (blocked/done in the alert colours, working in the bar's foreground, idle faded). Its panel lists the agents (a row sends `herd:focus:<key>`) and sends `herd:pick`, `app:pause`, `ui:cheatsheet`; middle-click is `herd:pick`, right-click `app:pause`. Its own `IpcHandler` (target = the plugin id: `open`/`close`/`toggle`); `Panel`'s built-in one, with a bound target, never registers. Without a daemon it offers Start (`systemctl --user start`) or Install (`install.sh` from the plugin checkout in `omarchy-launch-floating-terminal-with-presentation`).
 - **Cheat sheet:** generated from the live config (`labels.cheatsheet_sections`). Each row shows the binding's `desc`, or `actions.describe(...)` when there is none.
 
 ## Key Directories
@@ -65,12 +69,13 @@ PS One Shot turns a Sony DualSense into a controller for Hyprland, with an Omarc
 | `tests/` | stdlib unittest, pure logic |
 | `tools/` | `fake_dualsense.py`, a virtual DualSense over uinput for smoke tests; `screenshots.py`, the README pictures |
 | `docs/images/` | README pictures, drawn by `tools/screenshots.py` (never real screenshots: they'd show the user's windows) |
+| `plugin/`, `manifest.json`, `preview.png` | the Omarchy bar widget (QML), its plugin manifest, and the marketplace picture (also drawn by `tools/screenshots.py`) |
 | `packaging/` | systemd user unit, udev rule |
 
 ## Development Commands
 
 ```sh
-python -m unittest discover -s tests                   # full suite: 122 tests, well under a second
+python -m unittest discover -s tests                   # full suite: 127 tests, well under a second
 python -m unittest discover -s tests -k vibration      # by name pattern
 python -m unittest tests.test_core.ConfigTest          # module/class/method (works without tests/__init__.py)
 ruff check --select F,E9 ps_oneshot tests tools        # lint used in practice; pyproject has no ruff config
@@ -79,7 +84,9 @@ python3 -m ps_oneshot devices                          # discovered pads, hidraw
 python3 -m ps_oneshot -v -c /tmp/x/config.toml         # foreground run with debug logs (default command: run)
 python -m ps_oneshot.ui.demo                           # overlay preview with hardcoded data (needs Wayland)
 python -m tools.fake_dualsense --settle 2 tap:BTN_THUMBL sleep:1 stick:ABS_X:255 sleep:1 tap:BTN_EAST
-python -m tools.screenshots                            # redraw docs/images offscreen (needs a desktop session)
+python -m tools.screenshots --theme retro-82           # redraw docs/images and preview.png offscreen (needs a desktop session)
+python3 -m ps_oneshot status                           # the running daemon's status line, pretty-printed
+omarchy plugin validate .                              # the plugin manifest, as Omarchy and the marketplace check it
 ./install.sh [--full] [--no-udev | --uninstall]        # packages (pacman; --full adds the optional tools), launcher, user service, udev rule and uinput module via sudo
 systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 ```
@@ -127,12 +134,14 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 - **New binding field:** `config.Binding`, `_parse_binding` (allowed keys and validation), `App._press` / `_release` / `_on_trigger`, and `labels.binding_text`.
 - **New control:** `config.BUTTONS`, `pad.BUTTON_CODES` (or the hat/stick mapping), and `labels.GLYPHS` + `labels.ORDER`.
 - **A fill moved from `_draw` into `_area_css`:** draw it in `tools/screenshots.py` too, since offscreen pictures get no CSS (`radial.draw_halo`).
-- **User-visible behaviour change:** the binding's `desc` (cheat sheet text), README `## Features` and the `## Default layout` table. Limitations go in README `## Known issues`. If the overlays or the default bindings look different, rerun `python -m tools.screenshots`.
+- **User-visible behaviour change:** the binding's `desc` (cheat sheet text), README `## Features` and the `## Default layout` table. Limitations go in README `## Known issues`. If the overlays or the default bindings look different, rerun `python -m tools.screenshots --theme retro-82` (the docs are in retro-82; the pictures that didn't change come out byte-identical, except the time-dependent hold ring).
+- **The status line** (`status.snapshot`/`machines`): `plugin/BarWidget.qml`, which reads it, and `tools/screenshots.BarWidget`, which redraws the widget from `status.machines`. The widget's look changes go into that redraw too.
 
 ### Invariants
 
 - **Never grab the gamepad node;** other apps and games must still see it. Only the touchpad is grabbed, in mouse mode, while active (`Pad.set_active`).
 - **HID output reports set only the fields they own** (`build_output_report`: trigger, mic-LED and mic-mute (power-save) flags, plus the speaker's volume, path and preamp when routing sound). The lightbar and player LEDs go through the LED class and rumble through FF; otherwise we fight `hid-playstation`. One bit is everyone's: HAPTICS_SELECT (flag0 bit 1, "rumble, not audio haptics"). The controller stops a running rumble on any report without it, so ours set it while `Controller.rumbling`, the audio reports always do, and the 0x36 state section carries nothing else. A full state copied there (as LinuxAudio4Dualsense5 sends) marks the trigger, rumble and mic fields valid too, and resets them with every frame.
+- **A QML `Socket` never sets `connected = false` in `onError`.** Quickshell's Socket cleans up after the error handler returns; doing it in there too frees the connection twice when the daemon exits or restarts, and the whole Omarchy shell segfaults (`coredumpctl list quickshell`). Reconnect from a Timer while `!connected`.
 - **Overlays never take clicks:** OVERLAY layer, empty input region. The cheat sheet's keyboard mode is NONE; the radial and the carousel (`Overlay.takes_keyboard`) hold the keyboard exclusively while open, so Escape and friends work it (`radial.KEY_BUTTONS` → `RadialMenus._on_key`, same path as the pad). Anything that runs after one closes (actions, the favorites picker, focusing an agent) waits `menus.KEYBOARD_HANDBACK_MS`, or `key:` combos would land on our surface instead of the window.
 - **An open radial, carousel or cheat sheet owns the sticks.** Capture is derived (`menus.is_open or cheatsheet.visible or carousel.is_open`), so call `App._sync_stick_capture()` after changing any of them.
 - **A modifier (□) is a layer only when another button is pressed first** (`Held.chord`). In that case its own tap/hold don't fire.
@@ -159,7 +168,7 @@ systemctl --user restart ps-oneshot && journalctl --user -u ps-oneshot -f
 
 - **Python and dependencies:** system Python ≥ 3.11 with distro PyGObject, GTK 4 and gtk4-layer-shell (Arch: `python-gobject gtk4 gtk4-layer-shell`). No venv and no pip dependencies.
   - `pyproject.toml` (setuptools) declares only `PyGObject>=3.42` and ships `defaults/*.toml` as package data.
-  - Keep the version in sync between `pyproject.toml` and `ps_oneshot/__init__.py`.
+  - Keep the version in sync between `pyproject.toml`, `ps_oneshot/__init__.py` and `manifest.json` (a test checks the manifest).
 - **The installed service runs from the checkout:** `~/.local/bin/ps-oneshot` is `PYTHONPATH=<repo> python3 -m ps_oneshot`, so edits go live on `systemctl --user restart ps-oneshot`.
   - Before restarting, run the tests, the lint and `python3 -m ps_oneshot check`.
   - After restarting, confirm `connected …` and `ps-oneshot running` in the journal with no warnings.
@@ -236,3 +245,11 @@ pad.close()
 - **Sticks:** `ABS_X`/`ABS_Y` and `ABS_RX`/`ABS_RY`, range 0–255 with 128 as centre.
 - **Fake pad limits:** it has no hidraw, so no mic button, LEDs or adaptive triggers.
 - **Visual checks:** overlays open on the focused monitor; capture them with `grim -o <monitor>`. Note that `ui/demo.py` uses hardcoded sections, not the real config.
+
+### The bar widget
+
+- **Loading new QML takes a shell restart.** Copy `manifest.json`, `LICENSE` and `plugin/` into `~/.config/omarchy/plugins/io.github.misza-one.ps-oneshot/` (or use that checkout), then `omarchy restart shell`: saving a file there logs "Local plugin changed, reloading", but the shell keeps the compiled component, and disabling/enabling the plugin doesn't drop it either. Restart the shell before the daemon whenever the QML's socket handling changed, so a broken old version can't crash on the daemon's restart.
+- **Afterwards check** `quickshell log -p /usr/share/omarchy/shell` for errors from `plugin/BarWidget.qml`, `coredumpctl list quickshell` for crashes (each leaves an `org.quickshell` crash window), and that the `watch` connection is back: `ss -xp | grep ps-oneshot/control.sock`.
+- **Open and close the panel** with `omarchy-shell io.github.misza-one.ps-oneshot open|close`.
+- **Clicks:** `hyprctl dispatch 'hl.dsp.cursor.move({ x = …, y = … })'` onto the widget (layout coordinates: `hyprctl layers -j` gives the bar's), then a `linux.uinput.VirtualPointer` button press. Clicking right toggles the user's real pause, so click twice and check `ps-oneshot status`; put the cursor back afterwards. While the carousel or a radial is open the pointer goes to it, not to the bar.
+- **Made-up agents and battery:** stop the service, serve a fixed status line on the socket (answer `watch`, log what comes back), capture, then start the service again. The widget reconnects to both on its own within 2 s.

@@ -16,6 +16,7 @@
 #   herd:jump          focus the most urgent agent (repeat to cycle)
 #   herd:pick          the agents carousel, opened on the most urgent agent; again closes it
 #                      (`ps-oneshot agents` sends this to the running daemon)
+#   herd:focus:<key>   the agent with that Omaherd key (what the bar widget's agent rows send)
 #   dictation:back     erase the last dictation in this window (none left: erase a word)
 #   dictation:clear    erase every dictation since the last Enter (none left: erase the line)
 #   dictation:shoot    stop dictating, then press Enter once the text is typed; plays sounds.submit.

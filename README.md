@@ -17,7 +17,8 @@ With it you can:
 - change an agent's thinking level (Claude Code: effort) from the controller,
 - switch the dictation language and audio devices from a radial menu,
 - use the touchpad as a mouse,
-- see AI-agent status on the lightbar, and feel and hear when an agent needs you.
+- see AI-agent status on the lightbar, and feel and hear when an agent needs you,
+- keep the controller's battery and your agents, machine by machine, in the Omarchy bar.
 
 Works on any Hyprland setup. On [Omarchy](https://omarchy.org) it also uses Omarchy's own menus and commands.
 
@@ -65,6 +66,7 @@ L3 opens your favorites, R3 opens agents, holding the mic button opens voice. Pi
 - **Agents carousel** (`herd:pick`, or `ps-oneshot agents` from a key binding). The same agents as cards in a carousel that looks like Omarchy's theme switcher, in your theme's colours: the R3 ring's order, opening on the most urgent agent. Each card has its machine, status and how long, project, task and herdr tab; the strips beside it show each agent's icon and project. Every agent has a status dot on its strip, on the card and in a row underneath, and the ones waiting for you blink. Arrows, Tab or the pad (D-pad, a stick, L1/R1 to jump between waiting agents) move, typing filters, Enter or ✕ goes to the agent as R3 does, Escape or ○ closes. On Omarchy, bind it in `~/.config/hypr/bindings.lua`: `o.bind("SUPER + A", "Agents", "ps-oneshot agents")`; pressed again, it closes. Without the daemon running, `ps-oneshot agents` shows the cards in Omarchy's own image selector instead, without the blinking.
 
   <img src="docs/images/carousel.png" alt="The agents carousel: the selected agent's card in the middle, skewed strips with each agent's icon and project to both sides, and a row of status dots underneath">
+- **Omarchy bar widget.** <img src="docs/images/bar.png" width="36%" align="right" alt="The bar widget: the PlayStation logo, 75 %, then workstation 1 1 1 and build-server 1 1 1 in red, yellow and white; below it the open panel with the controller, its battery, every agent by machine with a status dot and badge, and Agents, Pause and Cheat sheet buttons">The controller's battery, then each machine with how many of its agents wait for you (red), are done (yellow), work (your theme's text colour) and sit idle (faded); red and yellow are the lightbar's. The percent turns red when the battery runs low, and a pause sign shows while the controller is paused. Click it for the panel: the controller and how it's connected, every agent with its project and task (click one, or pick it with the arrows and Enter, to go to it as R3 does), and buttons for the carousel, pause and the cheat sheet. Middle-click opens the carousel, right-click pauses or resumes. `omarchy-shell io.github.misza-one.ps-oneshot toggle` opens the panel from a key binding. Its settings (Omarchy's bar settings) choose what labels each machine (its name, its initial or nothing) and whether idle agents count. The widget gets everything from the running daemon, so it only shows, never polls: see [As an Omarchy plugin](#as-an-omarchy-plugin).
 - **Voice** (hold the mic button) puts the dictation languages straight on the ring (the current one checked) plus a Devices submenu with every output and input; picking a device makes it the default and moves playing streams.
 - **PS One Shot** (L3) holds the app's own switches: couch mode, pause and the cheat sheet, and four submenus (icon, ✓ and on/off show each switch's state; a stepper's level shows in the middle of the ring). **Sound**: effects on/off, volume +/−. **Haptics**: vibration on/off, adaptive triggers on/off and the trigger click's strength +/− (pull the trigger while the ring is open to feel it; rings ignore triggers). **Sensitivity**: the stick deadzone (✕ steps through its sizes) and a faster/slower pair for each stick mode in use (scroll speed, pointer speed, how fast a stick's arrows repeat) and for the touchpad pointer. **Lightbar**: colours vivid or as the theme has them, the alert style (✕ steps through alternate, blink and breathe and plays it on the lightbar), brightness and idle glow +/−, and the running light on/off. Switches and steppers keep the ring open for another press and are remembered across restarts. Vibration off silences every rumble and the shot's trigger kick; the triggers' resistance stays.
 
@@ -148,8 +150,27 @@ The udev rule makes the lightbar and player LEDs writable and gives the seat use
 ```sh
 ps-oneshot check      # config, Hyprland IPC, uinput, optional tools, controller, LED permissions
 ps-oneshot devices    # what was found and what is accessible
+ps-oneshot status     # the running daemon's state as JSON: controllers, pause, agents by machine
 ps-oneshot -v         # run in the foreground with debug logs
 journalctl --user -u ps-oneshot -f
+```
+
+### As an Omarchy plugin
+
+On Omarchy the repository is also a shell plugin, the bar widget above. Adding it clones the whole project to `~/.config/omarchy/plugins/io.github.misza-one.ps-oneshot/` and puts the widget on the bar; Omarchy never runs a plugin's code or sudo while adding it, so the daemon is set up by that checkout's `install.sh` (as above, with sudo for the udev rule):
+
+```sh
+omarchy plugin add https://github.com/misza-one/ps-oneshot.git --enable
+~/.config/omarchy/plugins/io.github.misza-one.ps-oneshot/install.sh
+```
+
+Until the daemon runs, the widget shows a faded logo, and its panel offers Install (`install.sh` in a terminal) or, once installed, Start. The daemon runs from that checkout, so an update is `omarchy plugin update io.github.misza-one.ps-oneshot` followed by `systemctl --user restart ps-oneshot`. Already installed from a clone elsewhere? Add the plugin all the same: the widget talks to whichever daemon runs.
+
+To remove both:
+
+```sh
+~/.config/omarchy/plugins/io.github.misza-one.ps-oneshot/install.sh --uninstall
+omarchy plugin remove io.github.misza-one.ps-oneshot
 ```
 
 ## Configuration
@@ -233,6 +254,8 @@ This isn't a native VoxType feature, so keep a few things in mind:
 - **Other programs' rumble stops while the lightbar animates.** The controller ends a running rumble on any output report without its rumble-mode bit, and the kernel's lightbar updates don't carry it. PS One Shot holds its lightbar animation while its own rumble plays, but it can't see other programs' rumble. Games are fine: in game mode it leaves the lightbar alone.
 - **Thinking level is cycled blind.** Agents don't publish their current thinking level, so the controller sends the agent's "next level" key and the same power-up sound plays every time.
 - **OpenRGB fights over the lightbar.** If OpenRGB (or a tool built on it) also detects the controller, both write the lightbar and colours flicker or mix. Disable OpenRGB's "Sony DualSense" detector.
+- **So do other DualSense plugins.** Omarchy bar widgets that set the controller's lightbar, player LEDs or adaptive triggers themselves (such as `atoslins.dualsense`) overwrite PS One Shot's and get overwritten in turn. Use one of them for the controller's lights and triggers.
+- **Bar clicks don't reach the widget while the carousel or a radial is open.** Those hold the keyboard exclusively while open, and Hyprland then sends them the pointer too. Close them first (○ or Escape).
 - **Steam Input.** With Steam running and its desktop controller configuration enabled, Steam turns the controller into a mouse/keyboard as well. Disable the desktop configuration or quit Steam.
 - **Leaving couch mode reloads the Hyprland config.** That is what restores every monitor exactly, including settings a runtime rule can't read back (ICC profiles, reserved areas). The catch: changes made at runtime with `hyprctl keyword`/`eval` are reset too. Omarchy keeps its toggles and workspace layouts in files, so those survive.
 - **Monitor-profile daemons undo couch mode.** hyprmoncfgd (and similar) notice the scale change within seconds and re-apply their profile. Pause them with `[couch] enter`/`exit` actions (example in `base.toml`).
@@ -242,7 +265,7 @@ This isn't a native VoxType feature, so keep a few things in mind:
 
 ## How it works
 
-One Python process runs one GLib main loop and needs no dependencies beyond PyGObject. It reads the controller through evdev (stdlib `ioctl`, no python-evdev) and the mic button through hidraw. It drives the LEDs via the kernel `hid-playstation` LED class and rumble via force feedback. The adaptive trigger effects and the mic mute (LED plus the microphone's hardware mute) go out as raw hidraw output reports that set only their own fields, so they don't interfere with the kernel driver. While a rumble plays, they also carry the controller's rumble-mode bit: any report without it stops the rumble, which is also why the lightbar animation waits until PS One Shot's own rumble is over. Sounds are synthesized once into `~/.cache/ps-oneshot` and played with `pw-play`. Over Bluetooth they're Opus-encoded instead (the system libopus, through ctypes) and sent to the controller in HID report 0x36, one frame every 10.667 ms, the controller's audio clock. That protocol was reverse-engineered by [LinuxAudio4Dualsense5](https://github.com/GeorgLegato/LinuxAudio4Dualsense5); PS One Shot implements it from that documentation, with a state section that sets nothing but the rumble-mode bit. Hyprland is reached over its IPC sockets. The overlays are GTK 4 layer-shell surfaces that never take clicks; the radial and the agents carousel hold the keyboard only while open. The game controller itself is never grabbed, so other apps still see it; only the touchpad is grabbed while PS One Shot is active.
+One Python process runs one GLib main loop and needs no dependencies beyond PyGObject. It reads the controller through evdev (stdlib `ioctl`, no python-evdev) and the mic button through hidraw. It drives the LEDs via the kernel `hid-playstation` LED class and rumble via force feedback. The adaptive trigger effects and the mic mute (LED plus the microphone's hardware mute) go out as raw hidraw output reports that set only their own fields, so they don't interfere with the kernel driver. While a rumble plays, they also carry the controller's rumble-mode bit: any report without it stops the rumble, which is also why the lightbar animation waits until PS One Shot's own rumble is over. Sounds are synthesized once into `~/.cache/ps-oneshot` and played with `pw-play`. Over Bluetooth they're Opus-encoded instead (the system libopus, through ctypes) and sent to the controller in HID report 0x36, one frame every 10.667 ms, the controller's audio clock. That protocol was reverse-engineered by [LinuxAudio4Dualsense5](https://github.com/GeorgLegato/LinuxAudio4Dualsense5); PS One Shot implements it from that documentation, with a state section that sets nothing but the rumble-mode bit. Hyprland is reached over its IPC sockets. The overlays are GTK 4 layer-shell surfaces that never take clicks; the radial and the agents carousel hold the keyboard only while open. The Omarchy bar widget is QML in Omarchy's own shell: it keeps one connection to the daemon's control socket (`$XDG_RUNTIME_DIR/ps-oneshot/control.sock`, this user only), gets the state line again on every change and sends its clicks back as actions. The game controller itself is never grabbed, so other apps still see it; only the touchpad is grabbed while PS One Shot is active.
 
 ## Development
 
@@ -250,10 +273,10 @@ One Python process runs one GLib main loop and needs no dependencies beyond PyGO
 python -m unittest discover -s tests
 python -m tools.fake_dualsense --settle 2 tap:BTN_THUMBL sleep:1 stick:ABS_X:255 sleep:1 tap:BTN_EAST
 python -m ps_oneshot.ui.demo
-python -m tools.screenshots      # redraw the pictures in docs/images (run it in a desktop session)
+python -m tools.screenshots --theme retro-82   # redraw docs/images and preview.png (in a desktop session)
 ```
 
-`tools/fake_dualsense.py` creates a virtual DualSense through uinput: a gamepad plus a touchpad, and it accepts rumble. You can drive it from a script to test without hardware. `tools/screenshots.py` draws the overlays offscreen with made-up apps and agents. [AGENTS.md](AGENTS.md) describes the architecture, conventions and how to test safely next to a real controller.
+`tools/fake_dualsense.py` creates a virtual DualSense through uinput: a gamepad plus a touchpad, and it accepts rumble. You can drive it from a script to test without hardware. `tools/screenshots.py` draws the overlays offscreen with made-up apps and agents, in the current Omarchy theme or the one `--theme` names (the docs use retro-82); the bar widget, which is QML (`plugin/BarWidget.qml`), it redraws after the original. [AGENTS.md](AGENTS.md) describes the architecture, conventions and how to test safely next to a real controller.
 
 ## Credits
 

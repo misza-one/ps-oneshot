@@ -9,7 +9,7 @@ from unittest import mock
 
 from gi.repository import GLib
 
-from ps_oneshot import config, lights, sounds
+from ps_oneshot import config, lights, sounds, status
 from ps_oneshot.apps import DesktopApp, app_for_window, window_of
 from ps_oneshot.config import MenuItem
 from ps_oneshot.dictation import DictationLog
@@ -311,6 +311,41 @@ class FavoritesTest(unittest.TestCase):
             self.assertEqual(Favorites(cfg).slots, [{"label": "Seed", "action": "exec:seed"}, None, None])
             sounds.save_state("favorites", [None, {"action": "launch:foot.desktop"}, "junk", {"action": "exec:x"}])
             self.assertEqual(Favorites(cfg).slots, [None, {"action": "launch:foot.desktop"}, None])
+
+
+class StatusTest(unittest.TestCase):
+    def test_machines_count_each_status_local_first(self):
+        agents = [
+            replace(agent("a", "main", "build-srv.lan"), status="working"),
+            replace(agent("b", "local", "ws"), status="done", since=50),
+            replace(agent("c", "local", "ws"), status="blocked", since=90),
+            replace(agent("d", "local", "ws"), status="blocked", since=10),
+            replace(agent("e", "main", "build-srv.lan"), status="unknown"),
+        ]
+        groups = status.machines(agents)
+        self.assertEqual([(g["host"], g["name"], g["local"]) for g in groups],
+                         [("local", "ws", True), ("main", "build-srv.lan", False)])
+        self.assertEqual(groups[0]["counts"], {"blocked": 2, "done": 1, "working": 0, "idle": 0})
+        self.assertEqual(groups[1]["counts"], {"blocked": 0, "done": 0, "working": 1, "idle": 1})  # unknown: idle
+        self.assertEqual([a["key"] for a in groups[0]["agents"]], ["d", "c", "b"])  # longest waiting first
+        self.assertEqual(groups[0]["agents"][0]["badge"], "WAIT")
+        self.assertEqual(groups[0]["agents"][0]["caption"], "Fix the tests")
+
+    def test_snapshot_carries_the_lightbar_alert_colours(self):
+        pad = status.PadState(name="DualSense", battery=40, charging=False, bluetooth=True, low=False)
+        state = status.snapshot([pad], [], paused=True, game=True, herd=False,
+                                lights={"blocked": [220, 68, 68], "done": [232, 196, 64]})
+        self.assertEqual(state["colors"], {"blocked": "#dc4444", "done": "#e8c440"})
+        self.assertEqual(state["pads"][0]["battery"], 40)
+        self.assertEqual((state["paused"], state["game"], state["machines"]), (True, True, []))
+        self.assertEqual(json.loads(status.encode(state)), state)
+
+    def test_the_bar_widget_manifest_follows_the_package_version(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "manifest.json"), encoding="utf-8") as file:
+            manifest = json.load(file)
+        self.assertEqual(manifest["version"], status.__version__)
+        self.assertTrue(os.path.isfile(os.path.join(root, manifest["entryPoints"]["barWidget"])))
 
 
 if __name__ == "__main__":

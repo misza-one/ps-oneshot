@@ -1,4 +1,4 @@
-"""ps-oneshot CLI: `run` (default), `check`, `devices`."""
+"""ps-oneshot CLI: `run` (default), `check`, `devices`, `agents`, `status`."""
 
 from __future__ import annotations
 
@@ -87,9 +87,24 @@ def _optional_tools(cfg) -> None:
         print(f"{'':<10}./install.sh --full installs what's missing (Arch)")
 
 
+def _status() -> int:
+    """The running daemon's state, as the bar widget gets it."""
+    from . import control
+
+    reply = control.send("status")
+    if reply is None:
+        print("ps-oneshot is not running", file=sys.stderr)
+        return 1
+    try:
+        print(json.dumps(json.loads(reply), indent=2, ensure_ascii=False))
+    except json.JSONDecodeError:
+        print(reply)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ps-oneshot", description="Drive Hyprland with a DualSense controller.")
-    parser.add_argument("command", nargs="?", default="run", choices=("run", "check", "devices", "agents"))
+    parser.add_argument("command", nargs="?", default="run", choices=("run", "check", "devices", "agents", "status"))
     parser.add_argument("-c", "--config", help="config file (default ~/.config/ps-oneshot/config.toml)")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--version", action="version", version=f"ps-oneshot {__version__}")
@@ -100,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+    if args.command == "status":
+        return _status()
     from .config import ConfigError, load
 
     try:

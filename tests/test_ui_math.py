@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import math
 import os
+import socket
 import tempfile
 import threading
+import time
 import unittest
 
 from gi.repository import GLib
@@ -312,6 +314,62 @@ class ControlSocketTest(unittest.TestCase):
             server.stop()
             self.assertFalse(os.path.exists(path))
             self.assertIsNone(send("herd:pick", path))
+
+
+class ControlWatchTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, "control.sock")
+        self.state = "one"
+        self.actions: list[str] = []
+        self.server = ControlServer(lambda a: self.actions.append(a), self.path, status=lambda: self.state)
+        self.assertTrue(self.server.start())
+
+    def tearDown(self) -> None:
+        self.server.stop()
+        self.dir.cleanup()
+
+    def pump(self, done, timeout: float = 2.0) -> bool:
+        deadline = time.monotonic() + timeout
+        while not done() and time.monotonic() < deadline:
+            GLib.MainContext.default().iteration(False)
+            time.sleep(0.005)
+        return done()
+
+    def test_watch_sends_the_state_then_each_change(self) -> None:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(self.path)
+        client.sendall(b"watch\n")
+        client.settimeout(0.05)
+        received: list[str] = []
+
+        def read():
+            try:
+                received.extend(client.recv(4096).decode().splitlines())
+            except TimeoutError:
+                pass
+            return received
+
+        self.assertTrue(self.pump(lambda: read() == ["one"]))
+        self.server.publish()  # unchanged: nothing goes out
+        self.state = "two"
+        self.server.publish()
+        self.assertTrue(self.pump(lambda: read() == ["one", "two"]))
+        client.sendall(b"herd:pi")  # the widget's clicks come back on the same connection, a line each
+        client.sendall(b"ck\napp:pause\n")
+        self.assertTrue(self.pump(lambda: self.actions == ["herd:pick", "app:pause"]))
+        client.close()
+        self.assertTrue(self.pump(lambda: not self.server._watchers))
+
+    def test_status_answers_and_actions_still_run(self) -> None:
+        replies: dict = {}
+        thread = threading.Thread(target=lambda: replies.update(
+            status=send("status", self.path), action=send("herd:pick", self.path)))
+        thread.start()
+        self.assertTrue(self.pump(lambda: len(replies) == 2))
+        thread.join()
+        self.assertEqual(replies, {"status": "one", "action": "ok"})
+        self.assertEqual(self.actions, ["herd:pick"])
 
 
 class ChoiceSubmenuTest(unittest.TestCase):

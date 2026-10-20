@@ -38,6 +38,7 @@ from .labels import cheatsheet_sections  # noqa: E402
 from .menus import Hooks, RadialMenus  # noqa: E402
 from .pad import Pad  # noqa: E402
 from .sources import Choice, LevelControl, MicMuteWatcher, next_stop, read_number  # noqa: E402
+from .status import PadState, encode, snapshot  # noqa: E402
 from .terminals import FootFollower  # noqa: E402
 from .ui.carousel import Carousel  # noqa: E402
 from .ui.cheatsheet import CheatSheet  # noqa: E402
@@ -130,7 +131,7 @@ class App:
             rumble=self.rumble, monitor=lambda: self.monitor, capture_sticks=self._sync_stick_capture,
             notify=lambda text: spawn(["notify-send", "-a", APP_NAME, "-t", "2500", text]),
         ))
-        self.control = ControlServer(self._on_control)
+        self.control = ControlServer(self._on_control, status=self._status_line)
         self.dictation = DictationLog(suffix=_voxtype_suffix())
         self.capture: CaptureWatcher | None = None
         self.mic = MicMuteWatcher(self._on_mic_mute)
@@ -284,6 +285,7 @@ class App:
             self.rumble(fx.RUMBLE_CONFIRM)
             self.refresh_lights()
             self._check_battery()
+            self.control.publish()
         devices_seen = dualsense.pair_nodes(dualsense.scan_nodes(), devices["match"], devices["ignore"])
         # A controller that couldn't be opened yet (udev still granting access) is retried on the next scan.
         self._nodes = nodes if len(self.pads) >= len(devices_seen) else set()
@@ -353,6 +355,7 @@ class App:
                 self.actions.run(press.binding.release)
         pad.close()
         self.refresh_lights()
+        self.control.publish()
         self._sync_stick_buttons()  # its held modifiers are gone
         self._nodes = set()  # force a rescan for reconnects
         if not self.pads:
@@ -624,6 +627,15 @@ class App:
             self.menus.close()
             self._hide_cheatsheet()
             self.carousel.open()
+            return
+        if arg.startswith("focus:"):  # one agent by its Omaherd key: the bar widget's agent rows
+            key = arg.removeprefix("focus:")
+            agent = next((a for a in self.herd.agents if a.key == key), None) if self.herd else None
+            if agent is None:
+                log.info("no agent %s to focus", key)
+                return
+            assert self.herd is not None
+            self.herd.focus(agent)
             return
         if arg != "jump":
             log.warning("unknown herd action %r", arg)
@@ -1048,6 +1060,7 @@ class App:
                 pad.controller.set_player_leds(0)
         self.rumble(fx.RUMBLE_PAUSE, force=True)
         self.refresh_lights()
+        self.control.publish()
 
     # Hyprland events -------------------------------------------------------------
 
@@ -1101,6 +1114,7 @@ class App:
         self.menus.refresh_source("herd")
         self.carousel.refresh(agents)
         self.refresh_lights()
+        self.control.publish()
 
     # lights / rumble / battery ---------------------------------------------------------
 
@@ -1183,7 +1197,24 @@ class App:
         if low_any != self.battery_low:
             self.battery_low = low_any
             self.refresh_lights()
+        self.control.publish()  # the bar's percent
         return True
+
+    def _status_line(self) -> str:
+        """The control socket's `status`/`watch` line: what the Omarchy bar widget shows."""
+        low = int(self.cfg.get("battery", "low"))
+        pads = []
+        for pad in self.pads.values():
+            capacity, state = pad.controller.battery_state()
+            state = state.lower()
+            pads.append(PadState(
+                name=pad.name, battery=capacity, charging=state == "charging", bluetooth=pad.controller.bluetooth,
+                low=capacity is not None and state == "discharging" and capacity <= low,
+            ))
+        return encode(snapshot(
+            pads, self.herd.agents if self.herd else [], paused=self.paused, game=self.paused_auto,
+            herd=self.herd is not None, lights=self.cfg.section("lights"),
+        ))
 
     def _battery_level(self) -> tuple[int, bool] | None:
         """(percent, charging) of the emptiest controller, shown in an open radial's corner."""

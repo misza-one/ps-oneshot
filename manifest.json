@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.misza-one.ps-oneshot",
+  "name": "PS One Shot",
+  "version": "0.1.0",
+  "author": "misza-one",
+  "license": "MIT",
+  "description": "A DualSense as the controller for Hyprland and your AI agents: radial menus, push-to-talk dictation, adaptive triggers, a lightbar that shows who waits. The bar widget shows the controller's battery and, per machine, your agents by status. Needs the PS One Shot daemon (install.sh).",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "plugin/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "PS One Shot",
+    "description": "DualSense battery, and per machine how many agents wait, are done, work or idle, coloured like the lightbar. Click for the agents, middle-click for the carousel, right-click to pause the controller.",
+    "category": "Hardware",
+    "aliases": ["dualsense", "controller", "gamepad", "agents"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "machineLabels": "Name",
+      "showIdle": true
+    },
+    "schema": [
+      {
+        "key": "machineLabels",
+        "type": "enum",
+        "label": "Machine labels",
+        "options": ["Name", "Initial", "None"],
+        "defaultValue": "Name",
+        "description": "What stands before each machine's counts: its hostname up to the first dot, its first letter, or nothing (a gap still separates the machines)."
+      },
+      {
+        "key": "showIdle",
+        "type": "boolean",
+        "label": "Count idle agents",
+        "defaultValue": true,
+        "description": "Show how many agents sit idle, faded. Off, the bar counts only agents that wait, are done or work."
+      }
+    ]
+  }
+}
